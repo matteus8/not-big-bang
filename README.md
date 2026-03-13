@@ -1,4 +1,4 @@
-# The "Small-Shop Hero" Platform
+# 🛡️ The "Small-Shop Hero" Platform
 ### *GovCon Cloud Infrastructure for the Rest of Us*
 
 ## 0. The "Oh No, I'm the Lead" Reality Check
@@ -6,8 +6,7 @@ You’re a 2-3 person shop. You just won a sub-contract for a mission in DC/Colo
 
 **This repo is your escape hatch.** 
 
-We designed this for **Sally & Jim** (the two engineers doing the real work) and **The SA** (who sits in meetings and resets passwords).
-It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" scrutiny without requiring a single Ansible playbook or a PhD in YAML-nesting.
+We designed this for **Sally & Jim** (the two engineers doing the real work) and **The System admin (SA)** (who sits in meetings and resets passwords). It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" scrutiny without requiring a single Ansible playbook or a PhD in YAML-nesting.
 
 ---
 
@@ -16,18 +15,18 @@ Most GovCloud platforms are giant blobs of "trust me, it works." When they break
 
 **Our Philosophy:**
 - **No Magic Booleans:** We don’t hide 100 resources behind a single `enabled: true` flag. 
-- **Pixels, Not Packets:** We don’t do VPNs. We stream Windows desktops to the users. It keeps the "dirty" office network away from our "clean" cloud.
-- **LLM-Ready:** The code is flat and simple. You can literally copy-paste a directory into ChatGPT or Claude and ask, *"Why is my Kafka pod sad?"* and it will actually know the answer.
+- **Pixels, Not Packets:** We don’t do VPNs. We stream desktops to users. It keeps the "dirty" office network away from our "clean" cloud.
+- **LLM-Ready:** The code is flat and simple. You can copy-paste a directory into ChatGPT or Claude and ask, *"Why is my Kafka pod sad?"* and it will actually know the answer.
 - **Read the Comments:** Look for `# <--- CHANGE ME`. This is where the ATO (Authority to Operate) happens.
 
 ---
 
 ## 2. The Architecture of Least Resistance
-We use **Managed Services** wherever possible. Why? Because Sally and Jim also want to go to the team happy hour, not patch Linux kernels till 7pm.
+We use **Managed Services** wherever possible. Why? Because Sally and Jim want to go to the team happy hour, not patch Linux kernels till 7pm.
 
 | Layer | Technology | The "Why" |
 | :--- | :--- | :--- |
-| **Front Door** | **AWS WorkSpaces** | Windows 11. Cyber wants a Start Menu; we give them a Start Menu. |
+| **Front Door** | **AWS WorkSpaces** | Windows 11 "Experience." (Technically Server 2022, but Bob won't know). |
 | **Identity** | **Managed Microsoft AD** | Cyber’s comfort blanket. It handles the users, the GPOs, and the trust. |
 | **The Brain** | **EKS / AKS** | Managed Kubernetes. This is where your Kafka and important apps live. |
 | **Data Bus** | **Strimzi Kafka** | Because everyone in DC loves a good ETL pipeline. |
@@ -36,13 +35,14 @@ We use **Managed Services** wherever possible. Why? Because Sally and Jim also w
 ---
 
 ## 3. The "No-Ansible" Windows Pact
-We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a playbook to fail. 
+We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a playbook to fail and 50 more patches for the ansible server itself.
 
 **The Strategy:**
-1. **The Golden Image:** Sally updates one "Master" WorkSpace once a month.
-2. **The Rebuild:** You click "Rebuild" on the 50 WorkSpaces.
-3. **The Result:** The C: drive is replaced with a fresh, patched image. User data lives on the D: drive and survives. 
-4. **Hardware Note:** Windows 11 is a RAM hog. We use **Performance Bundles (2vCPU / 8GB RAM)**. If you try to run it on 4GB, "Microsoft Copilot" will brick the machine and the user Bob in Tampa FL will start calling your personal cell phone.
+1. **The "Windows 11" Hack:** Since we are under 100 users, we use **Windows Server 2022 with Desktop Experience**. It looks identical to Windows 11 but doesn't require the 100-user BYOL licensing headache.
+2. **The Golden Image:** Sally updates one "Master" WorkSpace once a month.
+3. **The Rebuild:** You click "Rebuild" on the 50 WorkSpaces.
+4. **The Result:** The C: drive is replaced with a fresh, patched image. User data lives on the D: drive and survives. 
+5. **Hardware Note:** Even though it's Server-based, it's still a RAM hog. We use **Performance Bundles (2vCPU / 7.5GB RAM)**. If you try to run it on 4GB, the security stack will brick the machine and the user Bob in Tampa will start calling your personal cell phone.
 
 ---
 
@@ -53,7 +53,7 @@ We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a pla
 ├── terraform/
 │   ├── 01-network/          # VPC & Transit Gateway (The Enclave Backbone)
 │   ├── 02-identity/         # Managed AD (Setup this first or nothing works)
-│   ├── 03-workspaces/       # The Windows 11 Pool (The "Hero" Layer)
+│   ├── 03-workspaces/       # The Windows Pool (The "Hero" Layer)
 │   └── 04-kubernetes/       # EKS/AKS Cluster (The App Engine)
 ├── k8s-manifests/
 │   ├── 01-platform-auth/    # Keycloak OIDC (Hardened Identity)
@@ -71,26 +71,23 @@ We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a pla
 ## 5. Order of Operations (How to Win)
 
 ### Step 1: The Plumbing (`/terraform/01-02`)
-Deploy the Network and Identity. If your Managed AD isn't healthy, your Windows desktops will be "orphans."
-This is where you set up the Transit Gateway to talk to those 7 different enclaves.
+Deploy the Network and Identity. If your Managed AD isn't healthy, your desktops will be "orphans." This is where you set up the Transit Gateway to talk to those different enclaves.
 
 ### Step 2: The Front Door (`/terraform/03`)
-Spin up the WorkSpaces. Get one user (Bob in Tampa, FL) logged in. If Bob can see a Windows Start Menu... Nice!
+Spin up the WorkSpaces. Get one user (Bob in Tampa, FL) logged in. If Bob can see a Start Menu... Nice!
 
 ### Step 3: The Brain (`/terraform/04` + `/k8s-manifests`)
-Deploy the cluster. 
-We use standard managed nodes that Sally can troubleshoot if she needs to.
-Deploy Strimzi Kafka and point your Windows apps at it.
+Deploy the cluster. We use standard managed nodes that Sally can troubleshoot if needed.
 
 ---
 
 ## 6. Air-Gap & AI Readiness
 - **The SCIF Factor:** If you're heading into a SCIF, we've included **Zarf** support. 
   - Run `./scripts/package-zarf.sh` and it will bundle this entire repo, including the hardened Kafka and Keycloak images, zarf-cli, and raw manifests into one giant file you can carry in on a disc.
-  - There is a whole `README.md` **dedicated** to Zarf: To make your life easy and get yourself to happy hour, please read the entire thing before deploying anything.
+  - There is a whole `README.md` **dedicated** to Zarf: Please read it. It’s the difference between happy hour and a long night in the SCIF.
 
-- **LLM Context:** Every folder has a flat structure. If you're stuck, feed the `terraform/` folder and the `k8s-manifests/` folder to your favorite AI. 
-    > It will understand exactly how the IAM roles in AWS connect to the ServiceAccounts in Kubernetes as well as tell you what IRSA is.
+- **LLM Context:** Every folder has a flat structure. If you're stuck, feed the `terraform/` or `k8s-manifests/` folder to your favorite AI. 
+    > It will understand exactly how the IAM roles in AWS connect to the ServiceAccounts (IRSA) in Kubernetes.
 
 ---
 
