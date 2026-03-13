@@ -2,11 +2,12 @@
 ### *GovCon Cloud Infrastructure for the Rest of Us*
 
 ## 0. The "Oh No, I'm the Lead" Reality Check
-You’re a 2-3 person shop. You just won a sub-contract for a mission in DC/Colorado-Springs/Huntsville/etc.. You looked at the "Big Bang" or "Iron Bank" source code and realized you don't have a 20-person platform team to keep that black box from exploding.
+You’re a 2-3 person shop. You just won a sub-contract for a mission in DC/Colorado-Springs/Huntsville. You looked at the "Big Bang" or "Iron Bank" source code and realized you don't have a 20-person platform team to keep that black box from exploding.
 
 **This repo is your escape hatch.** 
 
-We designed this for **Sally & Jim** (the two engineers doing the real work) and **The SA** (who sits in meetings and resets passwords). It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" scrutiny without requiring a single Ansible playbook or a PhD in YAML-nesting.
+We designed this for **Sally & Jim** (the two engineers doing the real work) and **The SA** (who sits in meetings and resets passwords).
+It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" scrutiny without requiring a single Ansible playbook or a PhD in YAML-nesting.
 
 ---
 
@@ -30,7 +31,7 @@ We use **Managed Services** wherever possible. Why? Because Sally and Jim also w
 | **Identity** | **Managed Microsoft AD** | Cyber’s comfort blanket. It handles the users, the GPOs, and the trust. |
 | **The Brain** | **EKS / AKS** | Managed Kubernetes. This is where your Kafka and important apps live. |
 | **Data Bus** | **Strimzi Kafka** | Because everyone in DC loves a good ETL pipeline. |
-| **Hardening** | **Container Images** | We don't pull from Docker Hub. We only feast with trusted repos. |
+| **Hardening** | **Container Images** | We don't pull from Docker Hub. We only feast with trusted repos (Iron Bank, etc.). |
 
 ---
 
@@ -60,7 +61,7 @@ We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a pla
 │   └── 03-observability/    # Centralized Logs (To keep the ISSO happy)
 ├── docs/
 │   ├── sa-cheat-sheet.md    # One-liners for the Meeting-Sitter SA
-│   ├── golden-image-vpn.md  # How to patch Windows without losing your mind
+│   ├── windows-lifecycle.md # How to patch Windows without losing your mind
 │   └── ato-mappings.md      # NIST 800-53 controls (The "Pass the Audit" guide)
 └── README.md
 ```
@@ -70,8 +71,7 @@ We don't use Ansible to patch Windows. Why? Because 50 users = 50 ways for a pla
 ## 5. Order of Operations (How to Win)
 
 ### Step 1: The Plumbing (`/terraform/01-02`)
-Deploy the Network and Identity. 
-If your Managed AD isn't healthy, your Windows desktops will be "orphans."
+Deploy the Network and Identity. If your Managed AD isn't healthy, your Windows desktops will be "orphans."
 This is where you set up the Transit Gateway to talk to those 7 different enclaves.
 
 ### Step 2: The Front Door (`/terraform/03`)
@@ -86,11 +86,11 @@ Deploy Strimzi Kafka and point your Windows apps at it.
 
 ## 6. Air-Gap & AI Readiness
 - **The SCIF Factor:** If you're heading into a SCIF, we've included **Zarf** support. 
-Run `./scripts/package-zarf.sh` and it will bundle this entire repo, including the hardened Kafka and Keycloak images, zarf and zarf-cli, into one giant file you can carry in on a disc.
-  - there is a whole README.md deticated to zarf: To make your life easy and get yourself to happy hour, please read the entire thing before deploying anything. 
+  - Run `./scripts/package-zarf.sh` and it will bundle this entire repo, including the hardened Kafka and Keycloak images, zarf-cli, and raw manifests into one giant file you can carry in on a disc.
+  - There is a whole `README.md` **dedicated** to Zarf: To make your life easy and get yourself to happy hour, please read the entire thing before deploying anything.
 
 - **LLM Context:** Every folder has a flat structure. If you're stuck, feed the `terraform/` folder and the `k8s-manifests/` folder to your favorite AI. 
-It will understand exactly how the IAM roles in AWS connect to the ServiceAccounts in Kubernetes.
+    > It will understand exactly how the IAM roles in AWS connect to the ServiceAccounts in Kubernetes as well as tell you what IRSA is.
 
 ---
 
@@ -99,5 +99,5 @@ This repo doesn't solve every problem. It doesn't cook dinner. But it **does** g
 
 **Sally & Jim:** Start with `terraform/01-network`. 
 **The SA:** Go read `docs/sa-cheat-sheet.md`. 
-**Team Lead:** Relax. You’ve got this, your not here by chance, maybe some luck, but:
-> "Luck is what happens when preparation meets opportunity"
+**Team Lead:** Relax. You’ve got this. You're not here by chance—maybe some luck, but:
+> "Luck is what happens when preparation meets opportunity."
