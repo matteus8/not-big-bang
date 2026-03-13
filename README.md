@@ -1,6 +1,10 @@
-This approach is a direct response to "Black Box Fatigue." By removing the abstraction layers (the nested Helm charts and 500-line `values.yaml` files), you make the infrastructure readable for both a Human Lead and an LLM.
+# The goal
+This repo is a direct response to the "Big-Bang" / "Black Box Fatigue". 
+By removing the abstraction layers (the nested Helm charts, complex scripts, and 500-line `values.yaml` files), 
+we are making the `infrastructure/platform` comprehendable for `Human Lead's`, `System Admin's`, `DevOps Engeneeres`
+and even an `LLM` - for questioning and editing.
 
-Here is the directory structure and the top-level README designed to be the "source of truth" for the environment.
+Here is the directory structure:
 
 ### 1. Directory Structure (3 Layers)
 
