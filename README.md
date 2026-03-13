@@ -6,7 +6,7 @@ You’re a 2-3 person shop. You just won a sub-contract for a mission in DC/Colo
 
 **This repo is your escape hatch.** 
 
-We designed this for **Sally & Jim** (the two engineers doing the real work) and **The System admin (SA)** (who sits in meetings and resets passwords). It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" scrutiny without requiring a single Ansible playbook or a PhD in YAML-nesting.
+We designed this for **Sally & Jim** (the two engineers doing the real work) and **The System admin (SA)** (who sits in meetings and resets passwords). It’s built to handle about 50 users, 5-10 enclaves, and a whole lot of "Cyber" [scrutiny](./docs/i-dont-speak-cyber.md) without requiring a single Ansible playbook or a PhD in YAML-nesting.
 
 ---
 
