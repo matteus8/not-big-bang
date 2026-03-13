@@ -1,4 +1,4 @@
-# 🛡️ The "Small-Shop Hero" Platform
+# The "Small-Shop Hero" Platform
 ### *GovCon Cloud Infrastructure for the Rest of Us*
 
 ## 0. The "Oh No, I'm the Lead" Reality Check
