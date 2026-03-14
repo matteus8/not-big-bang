@@ -4,6 +4,8 @@ Bob in Tampa is about to stop calling Sally's cell phone.
 
 The SA drew the short straw on this one — which is fine, because once it's running, the day-to-day is manageable. For right now, you just want one WorkSpace: Bob's. You'll add more people later. The only variable that controls how many WorkSpaces exist is `workspace_users` — it's a list of AD usernames. One username, one desktop. Ten usernames, ten desktops. Add a name and re-apply to provision; remove a name (after offboarding in AD) and re-apply to deprovision. That's the whole lifecycle.
 
+**A note on running this locally:** 02-identity said the pipeline takes over from here — and it does for layers 04 and beyond. But 03-workspaces is different. Adding or removing a WorkSpace user is a day-to-day SA task, not a code deployment. Managing a dynamic user list through CI variables every time someone joins the project is more friction than it's worth. The SA runs this one from their terminal. The `apply:workspaces` CI job exists as a fallback, but in practice: new person starts, SA creates them in AD, SA updates the list and runs `terraform apply`, done in 5 minutes.
+
 **What this builds:**
 - WorkSpaces directory registered against your Managed AD
 - Security group that lets desktops reach AD (in the hub) and the internet via NAT, but nothing else

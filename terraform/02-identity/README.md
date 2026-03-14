@@ -70,18 +70,22 @@ The two new decisions for this layer (your project slug and state bucket came fr
 
 ### GitLab CI/CD variables to set
 
-After this apply, Terraform outputs a role ARN. Go to your GitLab project → Settings → CI/CD → Variables and add:
+After this apply, Terraform outputs a role ARN. Go to your GitLab project → Settings → CI/CD → Variables and add all of these — the pipeline won't work without them:
 
 | Variable | Falcon-Park example | Notes |
 |----------|-------------------|-------|
-| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | from the `gitlab_ci_role_arn` output |
+| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | from the `gitlab_ci_role_arn` output below |
 | `TF_STATE_BUCKET` | `falcon-park-tfstate` | your bucket name from 01-network |
 | `PROJECT_NAME` | `falcon-park` | your project slug |
 | `ENVIRONMENT` | `dev` | |
 | `AD_DOMAIN_NAME` | `corp.falconpark.gov` | your AD FQDN |
 | `AD_SHORT_NAME` | `FALCONPARK` | your NetBIOS name |
+| `GITLAB_URL` | `https://gitlab.vipers.io` | your GitLab instance base URL |
+| `GITLAB_NAMESPACE` | `falcon-park` | your GitLab group/namespace |
+| `GITLAB_TLS_THUMBPRINT` | `abc123...` | from the openssl command above |
+| `CLUSTER_NAME` | `falcon-park-dev` | your project slug + environment, used by the k8s deploy jobs |
 
-And one **Protected + Masked variable** (not plain text — this one stays hidden):
+And one **Protected + Masked variable** (not plain text — this one stays hidden in logs):
 
 | Variable | Value |
 |----------|-------|
@@ -198,7 +202,7 @@ That's it. One user. When you get to `03-workspaces`, you'll pass `bjohnson` as 
 
 ## After Apply — Test OIDC
 
-Push a commit to a branch. The GitLab CI pipeline should trigger and use the OIDC role to authenticate with AWS. If it says `Error: Could not assume role` — double-check the `gitlab_namespace` and `gitlab_repo` vars match your actual GitLab group and project name exactly. Case-sensitive.
+Push a commit to a branch. The GitLab CI pipeline should trigger and use the OIDC role to authenticate with AWS. If it says `Error: Could not assume role` — double-check the `gitlab_namespace` and `gitlab_repo` vars match your actual GitLab group and project name exactly. **Case-sensitive.**
 
 ---
 

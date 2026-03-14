@@ -191,6 +191,6 @@ Paste the error below and drop this whole file into Claude or ChatGPT: *"I'm dep
 |-------|---------------|-----|
 | `apply:kubernetes` fails: `unsupported Kubernetes version` | Version not available in GovCloud yet | Update `kubernetes_version` in `variables.tf` to a supported version: `aws eks describe-addon-versions --region us-gov-west-1 \| grep kubernetesVersion` |
 | `kubectl get nodes` returns nothing | Node group still provisioning | Wait 5 minutes, try again |
-| `error: You must be logged in to the server (Unauthorized)` | IAM identity doesn't match who ran apply | The CI role assumed during apply is the cluster creator — Jim's local profile needs `aws-auth` access added, or use the same role locally |
+| `error: You must be logged in to the server (Unauthorized)` | IAM identity doesn't match who ran apply | The CI role is the cluster creator and gets implicit admin access. Jim's local profile is a different IAM identity. Either add Jim's IAM ARN as a cluster access entry in the EKS console, or assume the same CI role locally before running kubectl |
 | SSM port-forward hangs immediately | No instance in hub VPC with SSM | Spin up a `t3.micro` Amazon Linux instance in a hub private subnet |
 | Add-on creation fails in CI | Cluster wasn't fully ready yet | Re-run the `apply:kubernetes` job — it retries cleanly |

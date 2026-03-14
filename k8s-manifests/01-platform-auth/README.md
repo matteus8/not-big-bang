@@ -23,6 +23,29 @@ Sally called this the bouncer. "One bouncer at the door. Nobody walks past the b
 
 ## Before You Start
 
+### 0. Install the AWS Load Balancer Controller
+
+Every `Ingress` in this stack — including Keycloak's — needs the AWS Load Balancer Controller to provision ALBs. Without it, your Ingress will sit there forever in `Pending` state.
+
+```bash
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  --namespace kube-system \
+  --set clusterName=falcon-park-dev \    # <---- change me
+  --set serviceAccount.create=true \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --wait --timeout 5m
+```
+
+Verify:
+```bash
+kubectl get deployment aws-load-balancer-controller -n kube-system
+```
+
+> The controller needs an IRSA role to create ALBs on your behalf. If the pods are crashlooping with `AccessDenied`, the service account needs an IAM role with `elasticloadbalancing:*` and `ec2:Describe*`. The [EKS LBC docs](https://docs.aws.amazon.com/eks/latest/userguide/lbc-helm.html) have the exact policy — one-time setup.
+
 ### 1. Note the `# <---- change me` lines in `keycloak-values.yaml`
 
 Open the file. You'll find three things to fill in:
@@ -173,5 +196,5 @@ Paste the error below and drop this whole file into Claude or ChatGPT: *"I'm dep
 |-------|---------------|-----|
 | Pods stuck in `Pending` | Nodes don't have capacity | Check `kubectl describe pod -n platform-auth` — look for resource or scheduling issues |
 | `CrashLoopBackOff` on Keycloak | Secret doesn't exist or wrong key name | Confirm `keycloak-admin` and `keycloak-postgres` secrets exist: `kubectl get secrets -n platform-auth` |
-| ALB not provisioning | AWS Load Balancer Controller not installed | Install the controller: it's a Helm chart, check the EKS add-on docs |
+| ALB not provisioning | AWS Load Balancer Controller not installed | See Step 0 above |
 | `Unauthorized` on admin console | Wrong password | Grab it from the secret: `kubectl get secret keycloak-admin -n platform-auth -o jsonpath='{.data.admin-password}' \| base64 -d` |

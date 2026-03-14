@@ -59,7 +59,7 @@ Confirm it works: `aws --version`
 
 In the AWS console, go to **IAM → Users → Create user**. Attach `AdministratorAccess`. Under that user's Security Credentials tab, create an **Access Key**.
 
-> This key gets deleted once `02-identity` is applied and OIDC is wired up. Write that on a sticky note. DONT FOGET!
+> This key gets deleted once `02-identity` is applied and OIDC is wired up. Write that on a sticky note. Don't forget.
 
 ### 5. Configure the CLI on your laptop
 
