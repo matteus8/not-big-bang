@@ -1,0 +1,159 @@
+# 03 — WorkSpaces
+
+Bob in Tampa is about to stop calling Sally's cell phone.
+
+The SA drew the short straw on this one — which is fine, because once it's running, the day-to-day is manageable. Add a user to AD, add their username to `workspace_users` in your tfvars, run apply, done. Bob gets a desktop in 20 minutes. The SA goes back to whatever the SA was doing before Bob called.
+
+**What this builds:**
+- WorkSpaces directory registered against your Managed AD
+- Security group that lets desktops reach AD (in the hub) and the internet via NAT, but nothing else
+- KMS-encrypted root and user volumes (NIST SC-28, checked)
+- One WorkSpace per username in your list — add more by updating the list and re-applying
+- Users are **not** local admins. This is not negotiable.
+
+---
+
+## Before You Start
+
+### What you need from previous layers
+
+Run these to confirm the earlier layers finished cleanly:
+
+```bash
+# Confirm AD is up and shows Active status
+aws ds describe-directories \
+  --region us-gov-west-1 \
+  --query 'DirectoryDescriptions[*].[DirectoryId,Name,Stage]' \
+  --output table
+
+# Confirm your WorkSpaces spoke subnets exist
+aws ec2 describe-subnets \
+  --region us-gov-west-1 \
+  --filters "Name=tag:Layer,Values=01-network" \
+  --query 'Subnets[*].[SubnetId,CidrBlock,Tags[?Key==`Name`].Value|[0]]' \
+  --output table
+```
+
+You should see your AD directory in `Active` state and subnets in the `10.1.x.x` range (the WorkSpaces spoke). If the directory isn't `Active` yet, wait and check again — it takes 20-45 minutes.
+
+### Find your WorkSpaces bundle ID
+
+You need a bundle ID for the desktop image. List what's available in GovCloud:
+
+```bash
+aws workspaces describe-workspace-bundles \
+  --owner AMAZON \
+  --region us-gov-west-1 \
+  --query 'Bundles[*].[BundleId,Name]' \
+  --output table
+```
+
+Find "Standard with Windows Server 2022" or similar. Copy the `BundleId` — it looks like `wsb-abc123def`.
+
+### Create the OU in AD first
+
+WorkSpaces needs an OU to place computer objects. You don't have a domain-joined machine yet — that's fine. AWS Directory Service lets you do this from the console.
+
+Go to **AWS Directory Service → your directory → Actions → Open Active Directory Users and Computers** (this launches an RDP-based management console directly from the browser, no client needed).
+
+Navigate to your domain, find or create `Computers`, then create the OU:
+
+```
+OU=WorkSpaces,OU=Computers,DC=corp,DC=falconpark,DC=gov    # <---- change me to match your AD domain
+```
+
+If you prefer PowerShell, you can also do this from a `t3.micro` Windows instance joined to the domain:
+```powershell
+New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=Computers,DC=corp,DC=falconpark,DC=gov"
+```
+
+If you skip this entirely, the WorkSpaces directory registration will fail with a vague error about the OU not existing.
+
+---
+
+## Step 1 — Init
+
+```bash
+terraform init \
+  -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
+```
+
+---
+
+## Step 2 — Plan
+
+```bash
+terraform plan \
+  -var="project=falcon-park" \                     # <---- change me
+  -var="environment=dev" \
+  -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
+  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me to the bundle ID from the lookup above
+  -var='workspace_users=["jdoe","ssmith"]'         # <---- change me to your AD usernames
+```
+
+The plan should show the WorkSpaces directory, security group, KMS key, and one `aws_workspaces_workspace` resource per user.
+
+---
+
+## Step 3 — Apply
+
+```bash
+terraform apply \
+  -var="project=falcon-park" \                     # <---- change me
+  -var="environment=dev" \
+  -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
+  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me
+  -var='workspace_users=["jdoe","ssmith"]'         # <---- change me
+```
+
+WorkSpaces take 15-25 minutes to provision per user. The directory registration itself takes another 5-10 minutes on top of that. Total: grab lunch.
+
+---
+
+## Adding Users Later
+
+Edit your `-var='workspace_users=...'` list to add more users, then re-apply. Terraform only creates the new ones. Existing WorkSpaces are untouched.
+
+To decommission a user: remove them from AD first, then remove them from the list and re-apply. Terraform destroys the WorkSpace. The user's D: drive data is gone — make sure they've offboarded their files first.
+
+---
+
+## What Success Looks Like
+
+```
+Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
+
+Outputs:
+  workspaces_directory_id = "d-0abc..."
+  workspace_ids = {
+    "jdoe"   = "ws-0abc..."
+    "ssmith" = "ws-0def..."
+  }
+```
+
+Send your users the WorkSpaces client download link and their registration code (find it in the AWS console under WorkSpaces → Directories → your directory → Registration Code). Bob will stop calling. For a few days.
+
+---
+
+## Troubleshooting
+
+Paste the error output below and drop this whole file into Claude or ChatGPT: *"I'm setting up AWS WorkSpaces in GovCloud. Here's my error."*
+
+---
+
+### Paste Error Output Below
+
+```
+<paste terraform output here>
+```
+
+---
+
+**Common issues:**
+
+| Error | What it means | Fix |
+|-------|---------------|-----|
+| `InvalidParameterValuesException: The OU ... does not exist` | Skipped the OU creation step | Create the OU in AD before applying |
+| `Error: User not found` | Username not in AD | Create the user in AD first, then apply |
+| WorkSpace stuck in `PENDING` | Normal provisioning lag | Wait 30 minutes. If still stuck, check CloudTrail for the underlying error. |
+| `Error: InvalidResourceStateException` on directory | AD not fully provisioned | Go back to `02-identity`, confirm the AD state is `Active` in the console |

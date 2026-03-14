@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-layer
+  labels:
+    app.kubernetes.io/managed-by: kubectl
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: restricted
+    # baseline (not restricted) because Kafka/Zookeeper needs slightly more
+    # permissive settings than a typical app. Still no privileged containers.

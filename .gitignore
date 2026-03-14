@@ -1,0 +1,35 @@
+# Terraform — the usual suspects
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfplan
+*.tfvars          # if you put creds in here, we need to talk
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
+
+# Don't check in your laptop's AWS config
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editor noise
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Helm chart downloads (we pull these at deploy time)
+charts/
+
+# Kubeconfig — your cluster creds live here, not in git
+kubeconfig
+*.kubeconfig

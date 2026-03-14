@@ -1,0 +1,92 @@
+# kube-prometheus-stack — Prometheus, Alertmanager, and Grafana in one shot.
+# This is the "I want to know if things are broken before Bob calls" stack.
+#
+# Deploy with:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --namespace observability \
+#     --values k8s-manifests/03-observability/prometheus-stack-values.yaml
+
+grafana:
+  enabled: true
+  replicas: 1
+  adminPassword: ""
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  grafana.ini:
+    server:
+      root_url: "https://grafana.internal.example.gov"      # <---- change me to your Grafana domain
+    auth.generic_oauth:
+      enabled: true
+      name: Keycloak
+      allow_sign_up: true
+      client_id: grafana
+      client_secret: ""                                      # <---- change me — create the grafana client in Keycloak and paste the secret here
+      scopes: openid profile email roles
+      auth_url: "https://auth.internal.example.gov/realms/platform/protocol/openid-connect/auth"    # <---- change me to your Keycloak domain
+      token_url: "https://auth.internal.example.gov/realms/platform/protocol/openid-connect/token"  # <---- change me to your Keycloak domain
+      api_url: "https://auth.internal.example.gov/realms/platform/protocol/openid-connect/userinfo" # <---- change me to your Keycloak domain
+      role_attribute_path: "contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'"
+    auth:
+      disable_login_form: false
+    security:
+      cookie_secure: true
+      strict_transport_security: true
+
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: ""          # <---- change me to your ACM cert ARN
+      alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    hosts:
+      - grafana.internal.example.gov                         # <---- change me to your Grafana domain
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+prometheus:
+  prometheusSpec:
+    retention: 30d
+    retentionSize: "45GB"
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 6Gi
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true

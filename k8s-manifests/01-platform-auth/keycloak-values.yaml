@@ -1,0 +1,81 @@
+# Keycloak — the OIDC broker for everything running in the cluster.
+# WorkSpaces users hit an app, get bounced to Keycloak, Keycloak
+# verifies against AD (via LDAP or AD FS federation), issues a token.
+# No app ever touches AD directly.
+#
+# Deploy with:
+#   helm repo add bitnami https://charts.bitnami.com/bitnami
+#   helm upgrade --install keycloak bitnami/keycloak \
+#     --namespace platform-auth \
+#     --values k8s-manifests/01-platform-auth/keycloak-values.yaml
+
+image:
+  tag: "24"  # pin a version, don't use latest in a gov environment
+
+replicaCount: 2  # HA — if one pod dies Keycloak still works
+
+auth:
+  # Admin password comes from a Kubernetes secret, not this file.
+  # Create it before deploying:
+  #   kubectl create secret generic keycloak-admin \
+  #     --from-literal=admin-password='<strong-password>' \
+  #     -n platform-auth
+  existingSecret: keycloak-admin
+  adminUser: admin
+  passwordSecretKey: admin-password
+
+production: true
+proxy: edge  # ALB terminates TLS, Keycloak trusts X-Forwarded-For
+
+tls:
+  enabled: false
+
+ingress:
+  enabled: true
+  ingressClassName: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ""           # <---- change me to your ACM cert ARN
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+  hostname: auth.internal.example.gov                       # <---- change me to your Keycloak domain
+
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: keycloak-postgres
+    secretKeys:
+      adminPasswordKey: postgres-password
+      userPasswordKey: password
+  primary:
+    persistence:
+      size: 10Gi
+      storageClass: ""
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+podAntiAffinityPreset: hard
+
+serviceAccount:
+  create: true
+  name: keycloak
+  annotations:
+    eks.amazonaws.com/role-arn: ""   # <---- change me — run the IRSA command in this README first, then paste the ARN here
+
+cache:
+  enabled: true
+  stackName: kubernetes
+
+extraEnvVars:
+  - name: KC_LOG_LEVEL
+    value: "INFO"
+  - name: KC_FEATURES
+    value: "token-exchange,admin-fine-grained-authz"

@@ -1,0 +1,75 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  name: main
+  namespace: data-layer
+spec:
+  kafka:
+    version: 3.7.0   # pin the version
+    replicas: 3       # 3 brokers for fault tolerance — don't go below 3
+    listeners:
+      # Internal listener — OIDC/mTLS within the cluster
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          type: tls   # mutual TLS for internal producers/consumers
+    authorization:
+      type: simple    # ACL-based — simple but effective for 5-10 enclaves
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      # Encryption in transit — required for NIST SC-8
+      ssl.client.auth: required
+    storage:
+      type: jbod
+      volumes:
+        - id: 0
+          type: persistent-claim
+          size: 50Gi
+          deleteClaim: false
+          class: ""   # cluster default (gp3)
+    resources:
+      requests:
+        memory: 2Gi
+        cpu: 500m
+      limits:
+        memory: 4Gi
+        cpu: 2000m
+    template:
+      pod:
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    strimzi.io/name: main-kafka
+                topologyKey: kubernetes.io/hostname  # one broker per node
+
+  # KRaft mode — no ZooKeeper dependency (Kafka 3.3+)
+  # If you're on an older version, replace this with a zookeeper: block
+  zookeeper:
+    replicas: 3
+    storage:
+      type: persistent-claim
+      size: 10Gi
+      deleteClaim: false
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+  entityOperator:
+    topicOperator: {}   # manages KafkaTopics via CRs — no manual kafka-topics.sh
+    userOperator: {}    # manages KafkaUsers via CRs — no manual ACL commands

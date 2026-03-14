@@ -1,0 +1,307 @@
+# Falcon-Park GitLab CI — Terraform + Kubernetes pipeline
+#
+# No credentials stored anywhere in this repo.
+# GitLab CI requests a short-lived JWT, AWS verifies it against the OIDC
+# provider created in 02-identity, and issues a scoped STS token.
+# Token expires. Nothing to rotate. Bob in Tampa can't steal it.
+#
+# ── Runner note ──────────────────────────────────────────────────────────────
+# The EKS cluster has no public API endpoint. The k8s-deploy jobs must run on
+# a GitLab runner registered inside the hub VPC — the runner reaches the EKS
+# private endpoint through the hub-to-eks VPC peering. If your runner is
+# outside the hub VPC, kubectl will time out silently and you'll wonder why
+# the job just hangs. It's not hanging — it's waiting on a TCP connection that
+# will never arrive. Put the runner in the hub VPC. That's the fix.
+#
+# Required CI/CD variables (Settings → CI/CD → Variables):
+#   AWS_ROLE_ARN          - from 02-identity output: gitlab_ci_role_arn
+#   TF_STATE_BUCKET       - your S3 state bucket name
+#   PROJECT_NAME          - your project slug, e.g. falcon-park
+#   ENVIRONMENT           - dev / staging / prod
+#   AD_DOMAIN_NAME        - e.g. corp.falconpark.gov
+#   AD_SHORT_NAME         - e.g. FALCONPARK
+#   GITLAB_URL            - e.g. https://gitlab.vipers.io
+#   GITLAB_NAMESPACE      - GitLab group/namespace, e.g. falcon-park
+#   GITLAB_TLS_THUMBPRINT - TLS thumbprint of your GitLab instance
+#   CLUSTER_NAME          - your EKS cluster name, e.g. falcon-park-dev
+#
+# Required masked variable (Protected + Masked):
+#   AD_ADMIN_PASSWORD  - Managed AD admin password
+
+variables:
+  TF_VERSION: "1.9.0"
+  AWS_REGION: "us-gov-west-1"
+  HELM_VERSION: "3.15.0"
+
+default:
+  image: hashicorp/terraform:${TF_VERSION}
+  before_script:
+    # Exchange GitLab JWT for AWS credentials via OIDC — no static keys
+    - >
+      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
+      $(aws sts assume-role-with-web-identity
+      --role-arn "${AWS_ROLE_ARN}"
+      --role-session-name "gitlab-ci-${CI_JOB_ID}"
+      --web-identity-token "${CI_JOB_JWT_V2}"
+      --duration-seconds 3600
+      --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]"
+      --output text))
+
+stages:
+  - validate
+  - plan
+  - apply
+  - k8s-validate
+  - k8s-deploy
+
+# ─── VALIDATE ────────────────────────────────────────────────
+# Runs on every MR. Catches syntax errors before plan.
+
+.tf_validate:
+  stage: validate
+  script:
+    - terraform init -backend=false
+    - terraform validate
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+validate:network:
+  extends: .tf_validate
+  variables:
+    TF_ROOT: terraform/01-network
+
+validate:identity:
+  extends: .tf_validate
+  variables:
+    TF_ROOT: terraform/02-identity
+
+validate:workspaces:
+  extends: .tf_validate
+  variables:
+    TF_ROOT: terraform/03-workspaces
+
+validate:kubernetes:
+  extends: .tf_validate
+  variables:
+    TF_ROOT: terraform/04-kubernetes
+
+# ─── PLAN ────────────────────────────────────────────────────
+# Runs on every MR. Plan output posted as MR comment.
+
+.tf_plan:
+  stage: plan
+  script:
+    - cd ${TF_ROOT}
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform plan -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -no-color -out=tfplan 2>&1 | tee plan.txt
+  artifacts:
+    paths:
+      - ${TF_ROOT}/tfplan
+      - ${TF_ROOT}/plan.txt
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+plan:network:
+  extends: .tf_plan
+  variables:
+    TF_ROOT: terraform/01-network
+
+plan:identity:
+  extends: .tf_plan
+  variables:
+    TF_ROOT: terraform/02-identity
+  script:
+    - cd ${TF_ROOT}
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform plan
+      -var="project=${PROJECT_NAME}"
+      -var="environment=${ENVIRONMENT}"
+      -var="tfstate_bucket=${TF_STATE_BUCKET}"
+      -var="ad_domain_name=${AD_DOMAIN_NAME}"
+      -var="ad_short_name=${AD_SHORT_NAME}"
+      -var="gitlab_url=${GITLAB_URL}"
+      -var="gitlab_namespace=${GITLAB_NAMESPACE}"
+      -var="gitlab_repo=${CI_PROJECT_NAME}"
+      -var="gitlab_tls_thumbprint=${GITLAB_TLS_THUMBPRINT}"
+      -no-color -out=tfplan 2>&1 | tee plan.txt
+
+plan:workspaces:
+  extends: .tf_plan
+  variables:
+    TF_ROOT: terraform/03-workspaces
+
+plan:kubernetes:
+  extends: .tf_plan
+  variables:
+    TF_ROOT: terraform/04-kubernetes
+
+# ─── APPLY ───────────────────────────────────────────────────
+# Runs on merge to main only. Layers run in dependency order.
+# Requires manual approval via GitLab Environments (Settings → CI/CD → Environments).
+
+.tf_apply:
+  stage: apply
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual   # manual gate — someone has to click Apply in the pipeline UI
+  environment:
+    name: govcloud/${ENVIRONMENT}
+
+apply:network:
+  extends: .tf_apply
+  script:
+    - cd terraform/01-network
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -auto-approve
+
+apply:identity:
+  extends: .tf_apply
+  needs: [apply:network]
+  script:
+    - cd terraform/02-identity
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform apply
+      -var="project=${PROJECT_NAME}"
+      -var="environment=${ENVIRONMENT}"
+      -var="tfstate_bucket=${TF_STATE_BUCKET}"
+      -var="ad_domain_name=${AD_DOMAIN_NAME}"
+      -var="ad_short_name=${AD_SHORT_NAME}"
+      -var="ad_admin_password=${AD_ADMIN_PASSWORD}"
+      -var="gitlab_url=${GITLAB_URL}"
+      -var="gitlab_namespace=${GITLAB_NAMESPACE}"
+      -var="gitlab_repo=${CI_PROJECT_NAME}"
+      -var="gitlab_tls_thumbprint=${GITLAB_TLS_THUMBPRINT}"
+      -auto-approve
+
+apply:workspaces:
+  extends: .tf_apply
+  needs: [apply:identity]
+  script:
+    - cd terraform/03-workspaces
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -auto-approve
+
+apply:kubernetes:
+  extends: .tf_apply
+  needs: [apply:identity]
+  script:
+    - cd terraform/04-kubernetes
+    - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -auto-approve
+
+# ─── K8S VALIDATE ─────────────────────────────────────────────
+# Runs on every MR. Validates manifests and helm dry-runs.
+# Runner must be in the hub VPC to reach the private EKS endpoint.
+
+.k8s_before_script: &k8s_before_script
+  # Same OIDC exchange as Terraform — same role, no extra credentials.
+  # Then get kubeconfig. The runner in the hub VPC can reach the private endpoint.
+  - >
+    export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
+    $(aws sts assume-role-with-web-identity
+    --role-arn "${AWS_ROLE_ARN}"
+    --role-session-name "gitlab-ci-${CI_JOB_ID}"
+    --web-identity-token "${CI_JOB_JWT_V2}"
+    --duration-seconds 3600
+    --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]"
+    --output text))
+  - aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+
+validate:manifests:
+  stage: k8s-validate
+  image: alpine/k8s:1.29.2   # has kubectl + helm baked in
+  before_script:
+    - *k8s_before_script
+  script:
+    # Dry-run every namespace and plain manifest against the live cluster.
+    # This catches API version mismatches before they hit deploy.
+    - kubectl apply --dry-run=server -f k8s-manifests/01-platform-auth/namespace.yaml
+    - kubectl apply --dry-run=server -f k8s-manifests/02-data-layer/namespace.yaml
+    - kubectl apply --dry-run=server -f k8s-manifests/03-observability/namespace.yaml
+    - kubectl apply --dry-run=server -f k8s-manifests/02-data-layer/strimzi-operator.yaml
+    # Helm template checks — renders the chart locally, no cluster contact needed
+    - helm repo add bitnami https://charts.bitnami.com/bitnami && helm repo update
+    - helm template keycloak bitnami/keycloak --values k8s-manifests/01-platform-auth/keycloak-values.yaml > /dev/null
+    - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts && helm repo update
+    - helm template kube-prometheus-stack prometheus-community/kube-prometheus-stack --values k8s-manifests/03-observability/prometheus-stack-values.yaml > /dev/null
+    - helm repo add fluent https://fluent.github.io/helm-charts && helm repo update
+    - helm template fluent-bit fluent/fluent-bit --values k8s-manifests/03-observability/fluent-bit-values.yaml > /dev/null
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - k8s-manifests/**/*
+
+# ─── K8S DEPLOY ───────────────────────────────────────────────
+# Runs on merge to main. Manual gate. Deploys in dependency order:
+# namespaces → keycloak → strimzi → kafka → observability stack.
+# Keycloak must be running before Grafana OAuth is configured.
+
+.k8s_deploy:
+  stage: k8s-deploy
+  image: alpine/k8s:1.29.2
+  before_script:
+    - *k8s_before_script
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+
+deploy:namespaces:
+  extends: .k8s_deploy
+  script:
+    - kubectl apply -f k8s-manifests/01-platform-auth/namespace.yaml
+    - kubectl apply -f k8s-manifests/02-data-layer/namespace.yaml
+    - kubectl apply -f k8s-manifests/03-observability/namespace.yaml
+
+deploy:keycloak:
+  extends: .k8s_deploy
+  needs: [deploy:namespaces]
+  script:
+    - helm repo add bitnami https://charts.bitnami.com/bitnami
+    - helm repo update
+    - helm upgrade --install keycloak bitnami/keycloak
+      --namespace platform-auth
+      --values k8s-manifests/01-platform-auth/keycloak-values.yaml
+      --wait --timeout 10m
+
+deploy:strimzi:
+  extends: .k8s_deploy
+  needs: [deploy:namespaces]
+  script:
+    - helm repo add strimzi https://strimzi.io/charts/
+    - helm repo update
+    - helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator
+      --namespace data-layer
+      --set watchNamespaces="{data-layer}"
+      --version 0.41.0    # <---- change me if you need a newer Strimzi version
+      --wait --timeout 5m
+
+deploy:kafka:
+  extends: .k8s_deploy
+  needs: [deploy:strimzi]
+  script:
+    - kubectl apply -f k8s-manifests/02-data-layer/kafka-cluster.yaml
+    # Wait up to 5 minutes for all 3 brokers. If it times out, check the Strimzi
+    # operator logs: kubectl logs -n data-layer -l name=strimzi-cluster-operator
+    - kubectl wait kafka/main
+      --for=condition=Ready
+      --timeout=300s
+      -n data-layer
+
+deploy:observability:
+  extends: .k8s_deploy
+  needs: [deploy:keycloak]   # Grafana OAuth is wired to Keycloak — Keycloak first
+  script:
+    - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    - helm repo update
+    - helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack
+      --namespace observability
+      --values k8s-manifests/03-observability/prometheus-stack-values.yaml
+      --wait --timeout 10m
+    - helm repo add fluent https://fluent.github.io/helm-charts
+    - helm repo update
+    - helm upgrade --install fluent-bit fluent/fluent-bit
+      --namespace observability
+      --values k8s-manifests/03-observability/fluent-bit-values.yaml
+      --set "daemonSetVolumes[0].hostPath.path=/var/log"
+      --wait --timeout 5m

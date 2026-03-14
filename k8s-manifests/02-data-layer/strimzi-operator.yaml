@@ -1,0 +1,12 @@
+# Strimzi Operator — manages the Kafka lifecycle.
+# Install the operator cluster-wide, then deploy a Kafka CR into data-layer.
+#
+# Deploy with:
+#   helm repo add strimzi https://strimzi.io/charts/
+#   helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
+#     --namespace data-layer \
+#     --set watchNamespaces="{data-layer}" \
+#     --version 0.41.0
+#
+# Check for latest version: https://github.com/strimzi/strimzi-kafka-operator/releases
+# Pin it. Don't use latest. You'll thank yourself at 2am.
