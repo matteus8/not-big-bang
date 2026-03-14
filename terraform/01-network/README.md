@@ -57,7 +57,7 @@ Confirm it works: `aws --version`
 
 ### 4. Create a working IAM user (temporary)
 
-In the console, go to **IAM → Users → Create user**. Attach `AdministratorAccess`. Under that user's Security Credentials tab, create an **Access Key**.
+In the AWS console, go to **IAM → Users → Create user**. Attach `AdministratorAccess`. Under that user's Security Credentials tab, create an **Access Key**.
 
 > This key gets deleted once `02-identity` is applied and OIDC is wired up. Write that on a sticky note. DONT FOGET!
 
@@ -101,29 +101,51 @@ Confirm: `terraform -version` — needs to be `>= 1.6`.
 
 ---
 
+## Pick Your Project Name
+
+Before you create the state bucket or run a single Terraform command, you need two names. They show up in every layer from here to the end, so pick them now and write them down.
+
+**Who's who:**
+
+- **Vipers.io** — your company. The subcontractor. The people who won the work.
+- **Falcon-Park** — the contract. The project. The mission. The thing Bob in Tampa is the end-user of.
+
+These are two different namespaces. Your project name belongs to the *contract*, not your company. Everything in this repo is named after the contract.
+
+The two values you need:
+
+| Variable | What it is | Falcon-Park example | Your value |
+|----------|-----------|-------------------|------------|
+| `project` | Short slug used in every resource name and state path | `falcon-park` | `your-contract-name` |
+| `tfstate_bucket` | S3 bucket for Terraform state — must be globally unique | `falcon-park-tfstate` | `your-contract-name-tfstate` |
+
+Pick a slug that's lowercase, hyphenated, no spaces. You'll type it in every `terraform plan` and `terraform apply` for the rest of this build. Keep it short.
+
+> The examples below use `falcon-park` and `falcon-park-tfstate`. Swap them for your contract name everywhere you see `# <---- change me`.
+
+---
+
 ## Create the State Bucket
 
 You need one thing that doesn't exist yet: an S3 bucket for Terraform state. Run this once, ever, before anything else.
 
-**Replace the bucket name with something unique to your account:**
-
 ```bash
 aws s3api create-bucket \
-  --bucket your-project-tfstate \        # <---- change me to a unique bucket name
+  --bucket falcon-park-tfstate \         # <---- change me to your bucket name
   --region us-gov-west-1 \
   --create-bucket-configuration LocationConstraint=us-gov-west-1
 
 aws s3api put-bucket-versioning \
-  --bucket your-project-tfstate \        # <---- same bucket name
+  --bucket falcon-park-tfstate \         # <---- same bucket name
   --versioning-configuration Status=Enabled
 
 aws s3api put-bucket-encryption \
-  --bucket your-project-tfstate \        # <---- same bucket name
+  --bucket falcon-park-tfstate \         # <---- same bucket name
   --server-side-encryption-configuration \
   '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"aws:kms"},"BucketKeyEnabled":true}]}'
 
 aws s3api put-public-access-block \
-  --bucket your-project-tfstate \        # <---- same bucket name
+  --bucket falcon-park-tfstate \         # <---- same bucket name
   --public-access-block-configuration \
   "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 ```
@@ -144,7 +166,7 @@ So for right now: ignore CI, run terraform from your terminal.
 
 ```bash
 terraform init \
-  -backend-config="bucket=your-project-tfstate"    # <---- change me to your bucket name
+  -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
 ```
 
 Terraform will pull the AWS provider and connect to your state bucket. Expected output ends with `Terraform has been successfully initialized!`
@@ -155,7 +177,7 @@ Terraform will pull the AWS provider and connect to your state bucket. Expected 
 
 ```bash
 terraform plan \
-  -var="project=your-project-slug" \               # <---- change me, e.g. "acme-gov"
+  -var="project=falcon-park" \                     # <---- change me
   -var="environment=dev"
 ```
 
@@ -167,7 +189,7 @@ Read it. The plan should show three VPCs, subnets, NAT gateways, peering connect
 
 ```bash
 terraform apply \
-  -var="project=your-project-slug" \               # <---- change me
+  -var="project=falcon-park" \                     # <---- change me
   -var="environment=dev"
 ```
 

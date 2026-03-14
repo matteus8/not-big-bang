@@ -4,8 +4,6 @@ The network exists. Three VPCs sitting there doing nothing. Now you need to figu
 
 Jim took this one. "Two things," he said. "Managed AD for the users, and OIDC for the pipeline. Nobody gets a key to the house until we know who they are, and no key lives in a `.env` file." Sally agreed. Bob in Tampa called again. Jim also ignored it.
 
-Their project is called **Falcon-Park**. You'll see that name in every example below. Swap it for yours.
-
 **What this builds:**
 - AWS Managed Microsoft AD in the hub private subnets — AWS runs the domain controllers, you just point WorkSpaces at it
 - DHCP options set on the hub VPC so instances resolve your AD domain
@@ -15,15 +13,6 @@ Their project is called **Falcon-Park**. You'll see that name in every example b
 ---
 
 ## Before You Start
-
-### A quick word on who's who
-
-Before you pick names, get straight on the two entities involved:
-
-- **Vipers.io** — that's your company. The subcontractor. The people who won the work and are now building this thing.
-- **Falcon-Park** — that's the contract. The project. The mission. The thing Bob in Tampa is the end-user of.
-
-These are two different namespaces and they should stay that way. Your AD domain belongs to the *project*, not your company. If Vipers.io wins another contract next year, it gets its own AD domain. They don't share.
 
 ### Do you have a Git host? Read this first.
 
@@ -72,12 +61,12 @@ corp.falconpark.gov
 
 The `ad_short_name` is the old-school NetBIOS name. Users see it as the domain prefix when they log in (`FALCONPARK\jdoe`). 15 characters max, no dots, all caps by convention.
 
+The two new decisions for this layer (your project slug and state bucket came from `01-network`):
+
 | Variable | Falcon-Park example | Your value |
 |----------|-------------------|------------|
 | `ad_domain_name` | `corp.falconpark.gov` | `corp.yourproject.gov` |
 | `ad_short_name` | `FALCONPARK` | `YOURPROJECT` |
-| `project` | `falcon-park` | `your-project` |
-| `tfstate_bucket` | `falcon-park-tfstate` | `your-project-tfstate` |
 
 ### GitLab CI/CD variables to set
 
