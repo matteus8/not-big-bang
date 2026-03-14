@@ -29,7 +29,7 @@ variable "workspace_bundle_id" {
 
 variable "workspace_users" {
   type        = list(string)
-  description = "List of AD usernames to provision WorkSpaces for. e.g. ['jdoe', 'ssmith']"
+  description = "AD usernames to provision WorkSpaces for. One WorkSpace per username. Add names to add desktops; remove names (after offboarding the user from AD) to destroy them. Start small — you can always add more. e.g. ['bjohnson', 'ssmith']"
   default     = []
 }
 

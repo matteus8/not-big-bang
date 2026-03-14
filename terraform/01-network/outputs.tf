@@ -7,59 +7,59 @@
 # Hub
 output "hub_vpc_id" {
   description = "Hub VPC ID — shared services."
-  value       = aws_vpc.hub.id
+  value       = module.hub_vpc.vpc_id
 }
 
 output "hub_private_subnet_ids" {
   description = "Hub private subnet IDs — AD, Keycloak, monitoring land here."
-  value       = aws_subnet.hub_private[*].id
+  value       = module.hub_vpc.private_subnets
 }
 
 output "hub_public_subnet_ids" {
   description = "Hub public subnet IDs — NAT Gateways and ALBs."
-  value       = aws_subnet.hub_public[*].id
+  value       = module.hub_vpc.public_subnets
 }
 
 output "hub_cidr" {
   description = "Hub VPC CIDR — used by spoke security group rules."
-  value       = aws_vpc.hub.cidr_block
+  value       = module.hub_vpc.vpc_cidr_block
 }
 
 # Spoke — WorkSpaces
 output "spoke_workspaces_vpc_id" {
   description = "WorkSpaces spoke VPC ID."
-  value       = aws_vpc.spoke_workspaces.id
+  value       = module.spoke_workspaces_vpc.vpc_id
 }
 
 output "spoke_workspaces_private_subnet_ids" {
   description = "WorkSpaces private subnet IDs — register your WorkSpaces directory here."
-  value       = aws_subnet.spoke_workspaces_private[*].id
+  value       = module.spoke_workspaces_vpc.private_subnets
 }
 
 output "spoke_workspaces_cidr" {
   description = "WorkSpaces spoke CIDR."
-  value       = aws_vpc.spoke_workspaces.cidr_block
+  value       = module.spoke_workspaces_vpc.vpc_cidr_block
 }
 
 # Spoke — EKS
 output "spoke_eks_vpc_id" {
   description = "EKS spoke VPC ID."
-  value       = aws_vpc.spoke_eks.id
+  value       = module.spoke_eks_vpc.vpc_id
 }
 
 output "spoke_eks_private_subnet_ids" {
   description = "EKS private subnet IDs — node groups and pods live here."
-  value       = aws_subnet.spoke_eks_private[*].id
+  value       = module.spoke_eks_vpc.private_subnets
 }
 
 output "spoke_eks_public_subnet_ids" {
   description = "EKS public subnet IDs — external load balancers only."
-  value       = aws_subnet.spoke_eks_public[*].id
+  value       = module.spoke_eks_vpc.public_subnets
 }
 
 output "spoke_eks_cidr" {
   description = "EKS spoke CIDR."
-  value       = aws_vpc.spoke_eks.cidr_block
+  value       = module.spoke_eks_vpc.vpc_cidr_block
 }
 
 # Peering

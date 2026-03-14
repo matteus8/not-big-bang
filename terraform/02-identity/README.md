@@ -175,6 +175,27 @@ Copy that `gitlab_ci_role_arn` and add it to your GitLab project CI/CD variables
 
 ---
 
+## After Apply — Create Your First AD User
+
+Bob in Tampa is the reason this whole project exists. Before you can provision him a WorkSpace in `03-workspaces`, he needs to exist in Active Directory.
+
+Go to **AWS Directory Service → your directory → Actions → Open Active Directory Users and Computers** in the AWS console. This launches a browser-based RDP management session — no domain-joined machine required.
+
+Navigate to your domain, then to **Users** (or whatever OU you want users in), right-click → **New → User**:
+
+```
+First name:  Bob
+Last name:   Johnson
+User logon:  bjohnson           ← this is what goes in workspace_users later
+Password:    <set initial password, mark as "must change at next logon">
+```
+
+That's it. One user. When you get to `03-workspaces`, you'll pass `bjohnson` as the first entry in `workspace_users` and Terraform will provision one WorkSpace for him. If the rest of the team needs desktops later, add them to AD the same way and add their usernames to the list — Terraform only creates the new ones, existing WorkSpaces are untouched.
+
+> **How many WorkSpaces will this build?** Exactly as many usernames as you put in `workspace_users`. Start with one (`bjohnson`). Add more when the team grows. There's no minimum and no upper limit enforced by Terraform — AWS limits depend on your service quota, but for a small team you won't hit it.
+
+---
+
 ## After Apply — Test OIDC
 
 Push a commit to a branch. The GitLab CI pipeline should trigger and use the OIDC role to authenticate with AWS. If it says `Error: Could not assume role` — double-check the `gitlab_namespace` and `gitlab_repo` vars match your actual GitLab group and project name exactly. Case-sensitive.

@@ -2,7 +2,7 @@
 
 Bob in Tampa is about to stop calling Sally's cell phone.
 
-The SA drew the short straw on this one — which is fine, because once it's running, the day-to-day is manageable. Add a user to AD, add their username to `workspace_users` in your tfvars, run apply, done. Bob gets a desktop in 20 minutes. The SA goes back to whatever the SA was doing before Bob called.
+The SA drew the short straw on this one — which is fine, because once it's running, the day-to-day is manageable. For right now, you just want one WorkSpace: Bob's. You'll add more people later. The only variable that controls how many WorkSpaces exist is `workspace_users` — it's a list of AD usernames. One username, one desktop. Ten usernames, ten desktops. Add a name and re-apply to provision; remove a name (after offboarding in AD) and re-apply to deprovision. That's the whole lifecycle.
 
 **What this builds:**
 - WorkSpaces directory registered against your Managed AD
@@ -88,10 +88,10 @@ terraform plan \
   -var="environment=dev" \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
   -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me to the bundle ID from the lookup above
-  -var='workspace_users=["jdoe","ssmith"]'         # <---- change me to your AD usernames
+  -var='workspace_users=["bjohnson"]'              # <---- start with Bob, add more later
 ```
 
-The plan should show the WorkSpaces directory, security group, KMS key, and one `aws_workspaces_workspace` resource per user.
+The plan should show the WorkSpaces directory, security group, KMS key, and one `aws_workspaces_workspace` resource — just Bob's for now.
 
 ---
 
@@ -103,7 +103,7 @@ terraform apply \
   -var="environment=dev" \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
   -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me
-  -var='workspace_users=["jdoe","ssmith"]'         # <---- change me
+  -var='workspace_users=["bjohnson"]'              # <---- Bob first, add more names when ready
 ```
 
 WorkSpaces take 15-25 minutes to provision per user. The directory registration itself takes another 5-10 minutes on top of that. Total: grab lunch.
@@ -112,9 +112,15 @@ WorkSpaces take 15-25 minutes to provision per user. The directory registration 
 
 ## Adding Users Later
 
-Edit your `-var='workspace_users=...'` list to add more users, then re-apply. Terraform only creates the new ones. Existing WorkSpaces are untouched.
+When the next person needs a desktop — say Sally decides she wants a WorkSpace too — create her in AD first (`ssmith` or whatever your naming convention is), then add her username to the list:
 
-To decommission a user: remove them from AD first, then remove them from the list and re-apply. Terraform destroys the WorkSpace. The user's D: drive data is gone — make sure they've offboarded their files first.
+```bash
+-var='workspace_users=["bjohnson","ssmith"]'
+```
+
+Re-apply. Terraform sees one existing WorkSpace (Bob's) and one new one to create (Sally's). Bob's desktop is untouched. Sally's provisions and is ready in 15-25 minutes.
+
+To decommission: remove the user from AD first, then remove their username from the list and re-apply. Terraform destroys the WorkSpace. The user's D: drive data is gone permanently — make sure they've offboarded their files before you pull the trigger.
 
 ---
 
@@ -126,12 +132,11 @@ Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
 Outputs:
   workspaces_directory_id = "d-0abc..."
   workspace_ids = {
-    "jdoe"   = "ws-0abc..."
-    "ssmith" = "ws-0def..."
+    "bjohnson" = "ws-0abc..."
   }
 ```
 
-Send your users the WorkSpaces client download link and their registration code (find it in the AWS console under WorkSpaces → Directories → your directory → Registration Code). Bob will stop calling. For a few days.
+Send Bob the WorkSpaces client download link and his registration code (find it in the AWS console under WorkSpaces → Directories → your directory → Registration Code). He logs in with his AD credentials. Bob will stop calling. For a few days.
 
 ---
 
