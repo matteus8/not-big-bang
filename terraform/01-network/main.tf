@@ -20,7 +20,7 @@ locals {
 
 module "hub_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "6.6.0"
 
   name = "${local.name_prefix}-hub"
   cidr = var.hub_cidr
@@ -56,7 +56,7 @@ module "hub_vpc" {
 
 module "spoke_workspaces_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "6.6.0"
 
   name = "${local.name_prefix}-spoke-workspaces"
   cidr = var.spoke_workspaces_cidr
@@ -88,7 +88,7 @@ module "spoke_workspaces_vpc" {
 
 module "spoke_eks_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.0"
+  version = "6.6.0"
 
   name = "${local.name_prefix}-spoke-eks"
   cidr = var.spoke_eks_cidr

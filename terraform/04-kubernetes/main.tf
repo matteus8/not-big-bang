@@ -73,7 +73,7 @@ resource "aws_kms_alias" "eks" {
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.0"
+  version = "21.15.1"
 
   cluster_name    = local.cluster_name
   cluster_version = var.kubernetes_version
@@ -171,7 +171,7 @@ module "eks" {
 
 module "vpc_cni_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.0"
+  version = "6.4.0"
 
   role_name             = "${local.cluster_name}-vpc-cni-irsa"
   attach_vpc_cni_policy = true
@@ -189,7 +189,7 @@ module "vpc_cni_irsa" {
 
 module "ebs_csi_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.0"
+  version = "6.4.0"
 
   role_name             = "${local.cluster_name}-ebs-csi-irsa"
   attach_ebs_csi_policy = true

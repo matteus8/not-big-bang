@@ -13,6 +13,23 @@ The Strimzi operator manages the Kafka lifecycle. You define what you want in a 
 
 ---
 
+## Estimated Monthly Cost
+
+Kafka is the most resource-hungry thing in this stack. Six pods (3 Kafka + 3 ZooKeeper) plus persistent volumes is likely to push you from 2 to 3 EKS nodes.
+
+| Resource | Details | Est. $/month |
+|----------|---------|-------------|
+| 3 × Kafka PVCs (50 Gi gp3 each) | Broker storage | ~$14 |
+| 3 × ZooKeeper PVCs (~10 Gi gp3 each) | ZK state | ~$3 |
+| Additional EKS node (likely needed) | 6 Kafka/ZK pods + existing workloads = 3 nodes total | ~$80 |
+| **Additional cost this layer** | | **~$95–100/month** |
+
+If you already bumped to 3 nodes in `04-kubernetes`, the node charge above is already covered and the real delta is just the storage (~$17/month).
+
+> The default 50 Gi per broker is sized for low-to-medium throughput. If your mission generates high event volume, increase it before go-live — expanding a PVC later is possible but requires a rolling restart of the brokers.
+
+---
+
 ## Files in This Directory
 
 | File | What to change |
@@ -25,11 +42,11 @@ The Strimzi operator manages the Kafka lifecycle. You define what you want in a 
 
 ## Before You Start
 
-Make sure your EKS cluster is up and your kubeconfig is pointing at it:
+Make sure your SSM tunnel is running and your kubeconfig is pointed at it (see `terraform/04-kubernetes/` Step 2). Then confirm the cluster is reachable:
 
 ```bash
 kubectl get nodes
-# Should show nodes in Ready state
+# Should show nodes in Ready state — if this hangs, your SSM tunnel isn't active
 ```
 
 ---
@@ -51,7 +68,7 @@ helm repo update
 helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
   --namespace data-layer \
   --set watchNamespaces="{data-layer}" \
-  --version 0.41.0 \                   # <---- change me if a newer version is available: https://github.com/strimzi/strimzi-kafka-operator/releases
+  --version 0.51.0 \                   # <---- change me if a newer version is available: https://github.com/strimzi/strimzi-kafka-operator/releases
   --wait --timeout 5m
 ```
 

@@ -15,6 +15,21 @@ That napkin is now this Terraform.
 
 ---
 
+## Estimated Monthly Cost
+
+| Resource | What you get | Est. $/month |
+|----------|-------------|-------------|
+| 3 × NAT Gateway (hourly) | One per VPC, two AZs in hub | ~$115 |
+| VPC Flow Logs (CloudWatch) | 3 VPCs × ~2 GB/month ingestion + storage | ~$5–20 |
+| VPC peering, subnets, IGWs | Free | $0 |
+| **Layer total** | | **~$120–135/month** |
+
+The three NAT Gateways are the only real spend here. Data-processing charges on top of the hourly rate are usually negligible for a small team — they only matter if you're moving a lot of data through them.
+
+> GovCloud prices run roughly 10–15 % above commercial. Figures above use `us-gov-west-1` rates. Check [aws.amazon.com/govcloud/pricing](https://aws.amazon.com/govcloud/pricing/) for current numbers — they change.
+
+---
+
 ## Before You Start — Do You Have the AWS CLI?
 
 Someone handed Jim an email with a root account username and password. Jim stared at it, immediately felt some dread, and then did the right thing: logged in once to set up MFA, and never touched root again. Here's how to get from that email to actually running Terraform.
@@ -59,7 +74,7 @@ Confirm it works: `aws --version`
 
 In the AWS console, go to **IAM → Users → Create user**. Attach `AdministratorAccess`. Under that user's Security Credentials tab, create an **Access Key**.
 
-> This key gets deleted once `02-identity` is applied and OIDC is wired up. Write that on a sticky note. Don't forget.
+> This key gets deleted after you finish `03-workspaces` — once Bob has his desktop and the GitLab CI pipeline is verified for `04-kubernetes`, the admin key has done its job. Write that on a sticky note. Don't forget.
 
 ### 5. Configure the CLI on your laptop
 
@@ -86,7 +101,15 @@ You should get your account ID and user ARN back. If you see that, your laptop c
 export AWS_PROFILE=govcloud
 ```
 
-> you can view your creds and cli account info in your home directory - the ".aws" directory
+To avoid setting this every new terminal session, add that line to your `~/.bashrc` (Linux/WSL) or `~/.zshrc` (Mac):
+
+```bash
+echo 'export AWS_PROFILE=govcloud' >> ~/.bashrc   # Linux/WSL
+# or
+echo 'export AWS_PROFILE=govcloud' >> ~/.zshrc    # Mac (zsh)
+```
+
+> You can view your stored credentials and config in `~/.aws/` — `~/.aws/credentials` has the key/secret, `~/.aws/config` has the region and output format.
 
 ### 7. Install Terraform
 
@@ -156,7 +179,7 @@ Done. You never run that again.
 
 ## A Note on CI
 
-The GitLab CI pipeline uses an IAM role that doesn't exist yet — it gets created in `02-identity`. That means **layers 01 and 02 are applied manually from your laptop**. After `02-identity` is done and you've added the role ARN to your GitLab CI/CD variables, the pipeline takes over for layers 03 and 04 and everything after.
+The GitLab CI pipeline uses an IAM role that doesn't exist yet — it gets created in `02-identity`. That means **layers 01, 02, and 03 are applied manually from your laptop** (or the SA's). After `02-identity` is done and you've added the role ARN to your GitLab CI/CD variables, CI takes over for layer 04 and everything after. Layer 03 (WorkSpaces) stays manual because the SA needs to add users day-to-day — CI is a fallback, not the primary path for it.
 
 So for right now: ignore CI, run terraform from your terminal.
 
@@ -164,7 +187,10 @@ So for right now: ignore CI, run terraform from your terminal.
 
 ## Step 1 — Init
 
+All terraform commands below run from the `terraform/01-network/` directory.
+
 ```bash
+cd terraform/01-network
 terraform init \
   -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
 ```

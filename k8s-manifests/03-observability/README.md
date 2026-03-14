@@ -14,6 +14,47 @@ Grafana uses Keycloak for login — users don't get local Grafana accounts. They
 
 ---
 
+## Estimated Monthly Cost
+
+| Resource | Details | Est. $/month |
+|----------|---------|-------------|
+| Prometheus PVC (50 Gi gp3, 30-day retention) | Metrics storage | ~$5 |
+| ALB for Grafana | Same as Keycloak ALB — one per service | ~$6–8 |
+| CloudWatch Logs ingestion (Fluent Bit) | ~5–20 GB/month for a small cluster at $0.50/GB | ~$3–10 |
+| CloudWatch Logs storage (365-day retention) | Accumulates over time — ~$0.03/GB/month | ~$2–15 |
+| **Additional cost this layer** | | **~$15–40/month** |
+
+CloudWatch log costs grow with cluster activity. A quiet cluster with 3–4 nodes and low-traffic apps generates maybe 5 GB/month. A busy cluster with lots of pod churn can hit 20+ GB/month. Check the CloudWatch usage metrics after the first week to calibrate.
+
+---
+
+## Full-Stack Cost Summary
+
+Once everything in this repo is deployed, here's the combined monthly estimate:
+
+| Layer | What's running | Est. $/month |
+|-------|---------------|-------------|
+| 01-network | 3 VPCs, 3 NAT Gateways, flow logs | ~$120–135 |
+| 02-identity | Managed AD (Standard), Secrets Manager | ~$40–50 |
+| 03-workspaces | WorkSpaces (AutoStop vs AlwaysOn × user count) | ~$30–85 per user |
+| 04-kubernetes | EKS cluster + 2–4 × m5.large nodes | ~$255–430 |
+| k8s: Keycloak | ALB, runs on existing nodes | ~$6–8 |
+| k8s: Kafka | 6 PVCs, likely +1 node | ~$15–100 |
+| k8s: Observability | Prometheus PVC, ALB, CloudWatch logs | ~$15–40 |
+| **Total (excl. WorkSpaces)** | | **~$450–760/month** |
+
+Add WorkSpaces on top:
+
+| Team size | WorkSpaces add | **Grand total** |
+|-----------|---------------|----------------|
+| 1 user | ~$30–85 | **~$480–845/month** |
+| 10 users | ~$300–850 | **~$750–1,610/month** |
+| 50 users | ~$1,500–4,250 | **~$1,950–5,010/month** |
+
+> These are estimates based on default configuration and `us-gov-west-1` pricing as of early 2025. Actual costs vary with traffic, log volume, and autoscaling. Run the [AWS Pricing Calculator](https://calculator.aws) with your specific numbers before sending a budget to the contracting officer.
+
+---
+
 ## Files in This Directory
 
 | File | What to change |
@@ -25,6 +66,22 @@ Grafana uses Keycloak for login — users don't get local Grafana accounts. They
 ---
 
 ## Before You Start
+
+### Prerequisites — kubectl must be connected
+
+Your SSM tunnel needs to be active before any of the commands below will work. Quick check:
+
+```bash
+kubectl get nodes
+# If this hangs or errors, start the SSM tunnel first (see terraform/04-kubernetes/ Step 2)
+```
+
+Also confirm Keycloak is running before deploying this stack — Grafana's login depends on it:
+
+```bash
+kubectl get pods -n platform-auth
+# Should show keycloak-* and postgresql-* pods in Running state
+```
 
 ### 1. Note all the `# <---- change me` lines
 
@@ -125,6 +182,7 @@ helm repo update
 
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace observability \
+  --version 82.10.3 \
   --values prometheus-stack-values.yaml \
   --wait --timeout 10m
 ```
@@ -139,6 +197,7 @@ helm repo update
 
 helm upgrade --install fluent-bit fluent/fluent-bit \
   --namespace observability \
+  --version 0.56.0 \
   --values fluent-bit-values.yaml \
   --set "daemonSetVolumes[0].hostPath.path=/var/log" \
   --wait --timeout 5m

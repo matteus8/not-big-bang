@@ -7,10 +7,11 @@
 #   helm repo add bitnami https://charts.bitnami.com/bitnami
 #   helm upgrade --install keycloak bitnami/keycloak \
 #     --namespace platform-auth \
+#     --version 25.3.2 \
 #     --values k8s-manifests/01-platform-auth/keycloak-values.yaml
 
 image:
-  tag: "24"  # pin a version, don't use latest in a gov environment
+  tag: "25"  # pin a version, don't use latest in a gov environment
 
 replicaCount: 2  # HA — if one pod dies Keycloak still works
 

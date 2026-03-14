@@ -5,7 +5,7 @@ metadata:
   namespace: data-layer
 spec:
   kafka:
-    version: 3.7.0   # pin the version
+    version: 3.9.0   # pin the version — 3.9.x is the latest Kafka 3.x (ZooKeeper-compatible). Kafka 4.x removes ZooKeeper entirely and requires KRaft mode; migrate with Strimzi's KRaft migration guide before upgrading past 3.9.
     replicas: 3       # 3 brokers for fault tolerance — don't go below 3
     listeners:
       # Internal listener — OIDC/mTLS within the cluster
@@ -54,8 +54,10 @@ spec:
                     strimzi.io/name: main-kafka
                 topologyKey: kubernetes.io/hostname  # one broker per node
 
-  # KRaft mode — no ZooKeeper dependency (Kafka 3.3+)
-  # If you're on an older version, replace this with a zookeeper: block
+  # ZooKeeper mode — used here for Kafka 3.x compatibility.
+  # Kafka 4.0+ removes ZooKeeper entirely. To migrate: follow the Strimzi KRaft migration
+  # guide (https://strimzi.io/docs/operators/latest/deploying#proc-deploy-kafka-kraft-str)
+  # before bumping the Kafka version above 3.9.
   zookeeper:
     replicas: 3
     storage:

@@ -12,6 +12,21 @@ Jim took this one. "Two things," he said. "Managed AD for the users, and OIDC fo
 
 ---
 
+## Estimated Monthly Cost
+
+| Resource | What you get | Est. $/month |
+|----------|-------------|-------------|
+| Managed Microsoft AD (Standard) | Two domain controllers in two AZs, up to 30K objects — plenty for 50 users | ~$40–50 |
+| Secrets Manager (1 secret) | AD admin password | ~$0.40 |
+| OIDC provider, IAM role | Free | $0 |
+| **Layer total** | | **~$40–50/month** |
+
+Standard Edition handles up to 30,000 directory objects — more than enough for a small shop. If you ever need to upgrade to Enterprise (500K objects, ~$110/month), change `ad_edition = "Enterprise"` in your vars and re-apply. The domain is preserved; only the underlying capacity tier changes.
+
+> Same GovCloud pricing caveat as `01-network` — check current rates before budgeting.
+
+---
+
 ## Before You Start
 
 ### Do you have a Git host? Read this first.
@@ -70,6 +85,16 @@ The two new decisions for this layer (your project slug and state bucket came fr
 
 ### GitLab CI/CD variables to set
 
+You'll need your GitLab TLS thumbprint before filling in the table below. Get it now (swap in your GitLab hostname):
+
+```bash
+openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
+  | openssl x509 -fingerprint -noout -sha1 \
+  | sed 's/://g' | tr '[:upper:]' '[:lower:]' | cut -d= -f2
+```
+
+Copy that output — you'll paste it as `GITLAB_TLS_THUMBPRINT` below.
+
 After this apply, Terraform outputs a role ARN. Go to your GitLab project → Settings → CI/CD → Variables and add all of these — the pipeline won't work without them:
 
 | Variable | Falcon-Park example | Notes |
@@ -83,7 +108,7 @@ After this apply, Terraform outputs a role ARN. Go to your GitLab project → Se
 | `GITLAB_URL` | `https://gitlab.vipers.io` | your GitLab instance base URL |
 | `GITLAB_NAMESPACE` | `falcon-park` | your GitLab group/namespace |
 | `GITLAB_TLS_THUMBPRINT` | `abc123...` | from the openssl command above |
-| `CLUSTER_NAME` | `falcon-park-dev` | your project slug + environment, used by the k8s deploy jobs |
+| `CLUSTER_NAME` | `falcon-park-dev` | your project slug + `-` + environment (e.g. `falcon-park-dev`), used by the k8s deploy jobs |
 
 And one **Protected + Masked variable** (not plain text — this one stays hidden in logs):
 
@@ -95,13 +120,16 @@ And one **Protected + Masked variable** (not plain text — this one stays hidde
 
 ## Still Running Locally
 
-This is the last layer you run from your laptop. Once the apply finishes and you've added the role ARN to your GitLab CI/CD variables, the pipeline takes over. After this: no more `terraform apply` from your terminal unless something is broken.
+Jim and Sally run this layer from their laptops. The SA will run `03-workspaces` from their own terminal (same admin credentials) — that's the last local apply before CI takes over. Once both are done and you've verified the pipeline runs `04-kubernetes` cleanly, the admin access key gets deleted.
 
 ---
 
 ## Step 1 — Init
 
+All terraform commands below run from the `terraform/02-identity/` directory.
+
 ```bash
+cd terraform/02-identity
 terraform init \
   -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
 ```
@@ -124,13 +152,6 @@ terraform plan \
 ```
 
 The plan should show Managed AD, a DHCP option set, an OIDC provider, an IAM role, and a Secrets Manager secret.
-
-**Getting your GitLab TLS thumbprint** — run this from your terminal (swap in your GitLab hostname):
-```bash
-openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
-  | openssl x509 -fingerprint -noout -sha1 \
-  | sed 's/://g' | tr '[:upper:]' '[:lower:]' | cut -d= -f2
-```
 
 ---
 
@@ -203,6 +224,12 @@ That's it. One user. When you get to `03-workspaces`, you'll pass `bjohnson` as 
 ## After Apply — Test OIDC
 
 Push a commit to a branch. The GitLab CI pipeline should trigger and use the OIDC role to authenticate with AWS. If it says `Error: Could not assume role` — double-check the `gitlab_namespace` and `gitlab_repo` vars match your actual GitLab group and project name exactly. **Case-sensitive.**
+
+---
+
+## What's Next
+
+Go to `03-workspaces/`. The SA will apply that layer from their terminal using the same admin credentials you've been using here. Once Bob has a desktop and the pipeline is wired up, you're done with local applies.
 
 ---
 

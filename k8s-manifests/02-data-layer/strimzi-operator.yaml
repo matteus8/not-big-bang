@@ -6,7 +6,7 @@
 #   helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
 #     --namespace data-layer \
 #     --set watchNamespaces="{data-layer}" \
-#     --version 0.41.0
+#     --version 0.51.0
 #
 # Check for latest version: https://github.com/strimzi/strimzi-kafka-operator/releases
 # Pin it. Don't use latest. You'll thank yourself at 2am.

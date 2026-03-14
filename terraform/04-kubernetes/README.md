@@ -14,6 +14,31 @@ This is a private EKS cluster — the API server has no public endpoint. You rea
 
 ---
 
+## Estimated Monthly Cost
+
+Defaults: 2 × `m5.large` nodes, 100 GB gp3 root volume per node, 365-day CloudWatch log retention.
+
+| Resource | Details | Est. $/month |
+|----------|---------|-------------|
+| EKS cluster fee | Flat per-cluster charge | ~$73 |
+| 2 × m5.large worker nodes | $0.11/hr each in GovCloud | ~$161 |
+| EBS root volumes (2 × 100 GB gp3) | Node OS disks | ~$19 |
+| CloudWatch control plane logs | Low volume for a small cluster | ~$3–10 |
+| KMS key | $1/key/month | ~$1 |
+| **Layer total (2-node baseline)** | | **~$255–265/month** |
+
+The node count drives cost. If the k8s workloads (Keycloak, Kafka, Prometheus) push you past 2 nodes, the autoscaler will add more — each additional `m5.large` adds ~$80/month. Budget for 3–4 nodes once the full app stack is running.
+
+| Node count | Node cost alone | Realistic total |
+|------------|----------------|----------------|
+| 2 (baseline) | ~$161 | ~$255–265 |
+| 3 | ~$241 | ~$335–345 |
+| 4 | ~$322 | ~$415–430 |
+
+> To stay at 2 nodes longer, use `m5.xlarge` (4 vCPU / 16 GB) instead of `m5.large` — you get more headroom per node at ~$160/month each, which is cheaper than running 4 `m5.large` nodes.
+
+---
+
 ## Before You Start
 
 ### Install kubectl and helm
@@ -40,6 +65,28 @@ Confirm both work:
 kubectl version --client
 helm version
 ```
+
+### Spin up a hub VPC instance (if you don't have one yet)
+
+The EKS API endpoint is private — there's no public way in. To reach it from your laptop, you need an EC2 instance inside the hub VPC that the SSM agent can reach. If you don't have one yet, create it now:
+
+1. Go to **EC2 → Launch Instance** in the AWS console
+2. Name it something like `falcon-park-bastion`
+3. AMI: **Amazon Linux 2023** (SSM agent is pre-installed)
+4. Instance type: `t3.micro`
+5. Network: select your **hub VPC**, any **private subnet** (10.0.x.x range)
+6. No key pair needed — SSM handles access
+7. IAM instance profile: attach `AmazonSSMManagedInstanceCore` (or create an instance profile with that policy)
+
+That's it. No security group inbound rules needed — SSM connects outbound. After a minute or two, it will appear when you run:
+
+```bash
+aws ssm describe-instance-information --region us-gov-west-1 \
+  --query 'InstanceInformationList[*].[InstanceId,IPAddress,ComputerName]' \
+  --output table
+```
+
+> The GitLab CI k8s-deploy jobs also need a runner registered inside the hub VPC to reach the private EKS endpoint. If you're using the same instance as your GitLab runner, install the runner on it now before you need it.
 
 ### Confirm the earlier layers are clean
 
@@ -125,6 +172,8 @@ kubectl config set-cluster falcon-park-dev \
   --server=https://localhost:8443
 ```
 
+> **Heads up — who can run kubectl?** The IAM identity that ran `terraform apply` (the CI role) is automatically the cluster admin. If you deleted the admin access key in `03-workspaces`, your local AWS profile won't have cluster access until you add it. The fix: in the AWS EKS console, go to your cluster → **Access** → **IAM access entries** → **Create access entry**, add your current IAM user or role ARN, and assign the `AmazonEKSClusterAdminPolicy`. You only need to do this once per IAM identity that needs kubectl access.
+
 > If the team is going to run `kubectl` regularly, look into AWS Client VPN into the hub VPC. The SSM port-forward above works but it's a two-step every time. VPN is a one-time setup and then it just works.
 
 ---
@@ -157,8 +206,8 @@ From your tunnel terminal:
 ```
 $ kubectl get nodes
 NAME                                          STATUS   ROLES    AGE   VERSION
-ip-10-2-10-x.us-gov-west-1.compute.internal   Ready    <none>   8m    v1.30.x
-ip-10-2-12-x.us-gov-west-1.compute.internal   Ready    <none>   8m    v1.30.x
+ip-10-2-10-x.us-gov-west-1.compute.internal   Ready    <none>   8m    v1.32.x
+ip-10-2-12-x.us-gov-west-1.compute.internal   Ready    <none>   8m    v1.32.x
 ```
 
 The Terraform outputs (visible in the CI job log) will look like:

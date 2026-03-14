@@ -12,6 +12,21 @@ Sally called this the bouncer. "One bouncer at the door. Nobody walks past the b
 
 ---
 
+## Estimated Monthly Cost
+
+This stack runs on the EKS nodes from `04-kubernetes` — no new EC2 charges. The only new AWS resources are an ALB and ACM certificate.
+
+| Resource | Details | Est. $/month |
+|----------|---------|-------------|
+| Application Load Balancer | ~$0.008/hr + minimal LCU charges for internal auth traffic | ~$6–8 |
+| ACM certificate | Free | $0 |
+| Secrets Manager (existing secret) | Already counted in `02-identity` | $0 |
+| **Additional cost this layer** | | **~$6–8/month** |
+
+Keycloak + PostgreSQL pods together use roughly 1–2 GB RAM and 0.5–1 vCPU at rest. They'll share nodes with system pods comfortably on a 2-node `m5.large` cluster.
+
+---
+
 ## Files in This Directory
 
 | File | What to change |
@@ -22,6 +37,15 @@ Sally called this the bouncer. "One bouncer at the door. Nobody walks past the b
 ---
 
 ## Before You Start
+
+### Prerequisites — kubectl must be connected
+
+Every command in this file talks to the cluster. Before you start, make sure your SSM tunnel is open and `kubectl` is pointed at it (see `terraform/04-kubernetes/` Step 2 for the full setup). Quick check:
+
+```bash
+kubectl get nodes
+# If this returns your nodes, you're connected. If it hangs or errors, start the SSM tunnel first.
+```
 
 ### 0. Install the AWS Load Balancer Controller
 
@@ -68,9 +92,9 @@ Open the file. You'll find three things to fill in:
 
 ### 2. Create the Keycloak admin secret
 
-```bash
-kubectl apply -f namespace.yaml
+The namespace needs to exist before you can create secrets in it — that's the `kubectl apply -f namespace.yaml` in Step 1 below. If you're doing the "Before You Start" steps first and haven't applied the namespace yet, skip ahead to Step 1, then come back here.
 
+```bash
 kubectl create secret generic keycloak-admin \
   --from-literal=admin-password='YourStrongAdminPassword' \    # <---- change me
   -n platform-auth
@@ -141,6 +165,7 @@ helm repo update
 
 helm upgrade --install keycloak bitnami/keycloak \
   --namespace platform-auth \
+  --version 25.3.2 \
   --values keycloak-values.yaml \
   --wait --timeout 10m
 ```

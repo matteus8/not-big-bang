@@ -6,6 +6,7 @@
 #   helm repo add fluent https://fluent.github.io/helm-charts
 #   helm upgrade --install fluent-bit fluent/fluent-bit \
 #     --namespace observability \
+#     --version 0.56.0 \
 #     --values k8s-manifests/03-observability/fluent-bit-values.yaml
 
 serviceAccount:

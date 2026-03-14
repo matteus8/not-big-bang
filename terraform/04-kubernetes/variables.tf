@@ -24,7 +24,7 @@ variable "tfstate_bucket" {
 variable "kubernetes_version" {
   type        = string
   description = "EKS Kubernetes version. Check AWS docs for latest GovCloud-supported version."
-  default     = "1.30"
+  default     = "1.32"
 }
 
 variable "node_instance_type" {
