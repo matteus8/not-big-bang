@@ -50,42 +50,100 @@ Jim asked around at Vipers.io. Turned out there was a GitLab instance. Had been 
 
 ---
 
-### Picking your AD domain name
+## Gather These Values Before You Touch a Terminal
 
-This is the one decision you cannot undo without a very bad afternoon. The `ad_domain_name` is the full DNS name of your Active Directory domain. Every WorkSpace, every domain-joined machine, and every Kerberos ticket will use this name forever.
+Open a notepad. You need nine values before you run a single command. Everything below tells you exactly how to get each one — add each value to your notepad as you go.
 
-Sally and Jim chose `corp.falconpark.gov`. Here's the anatomy of that choice:
+```
+ad_domain_name        = ___________________________
+ad_short_name         = ___________________________
+ad_admin_password     = ___________________________   (keep this secret)
+gitlab_url            = ___________________________
+gitlab_namespace      = ___________________________
+gitlab_repo           = ___________________________
+gitlab_tls_thumbprint = ___________________________
+project               = ___________________________   (carried over from 01-network)
+tfstate_bucket        = ___________________________   (carried over from 01-network)
+```
+
+---
+
+### `ad_domain_name` — your AD domain
+
+This is the one value you cannot change without rebuilding from scratch. Every WorkSpace, every domain-joined machine, and every Kerberos ticket will use this name forever. Pick it carefully.
+
+Use a subdomain of your contract's domain — not your company's domain, not the public root:
 
 ```
 corp.falconpark.gov
 │    │           │
 │    │           └── .gov because it's a government contract
 │    └── falconpark — the contract name, not the company name
-└── corp — "corporate internal" subdomain. this is the magic part:
-           it keeps AD off the public root domain AND signals to
-           anyone reading it that this is an internal directory,
-           not a public-facing service. vipers.io's other projects
-           get corp.theirproject.gov — same pattern, no overlap.
+└── corp — marks this as internal. keeps AD off the public root.
+           vipers.io's other projects get corp.theirproject.gov —
+           same pattern, no overlap.
 ```
 
-**Rules:**
-- Must be a valid DNS name — no spaces, no underscores
-- Don't use `.local` — it conflicts with mDNS and causes weird DNS issues
-- Don't use your public domain root (`falconpark.gov`) — use a subdomain (`corp.falconpark.gov`)
-- Once set, it's set. Renaming an AD domain is a full rebuild.
+Rules:
+- No spaces, no underscores
+- Don't use `.local` — it conflicts with mDNS
+- Don't use the bare public root (`falconpark.gov`) — always add a subdomain prefix (`corp.falconpark.gov`)
+- Once applied, it's permanent
 
-The `ad_short_name` is the old-school NetBIOS name. Users see it as the domain prefix when they log in (`FALCONPARK\jdoe`). 15 characters max, no dots, all caps by convention.
+Add to your notepad: `ad_domain_name = corp.yourcontract.gov`
 
-The two new decisions for this layer (your project slug and state bucket came from `01-network`):
+---
 
-| Variable | Falcon-Park example | Your value |
-|----------|-------------------|------------|
-| `ad_domain_name` | `corp.falconpark.gov` | `corp.yourproject.gov` |
-| `ad_short_name` | `FALCONPARK` | `YOURPROJECT` |
+### `ad_short_name` — NetBIOS name
 
-### GitLab CI/CD variables to set
+The old-school Windows domain prefix. Users see this when they log in: `FALCONPARK\jdoe`. Take the contract name, uppercase it, drop any hyphens if you need to stay under 15 characters.
 
-You'll need your GitLab TLS thumbprint before filling in the table below. Get it now (swap in your GitLab hostname):
+Rules: 15 characters max, no dots, all caps by convention.
+
+Add to your notepad: `ad_short_name = YOURCONTRACT`
+
+---
+
+### `ad_admin_password` — AD admin password
+
+Pick a strong password now and write it somewhere safe (a password manager, not a sticky note). You will not type it on the command line — you'll load it into your shell environment before applying so it never touches shell history.
+
+AWS enforces complexity. The password must be 8–64 characters and meet three of these four criteria: uppercase letter, lowercase letter, number, special character. A simple all-lowercase password will be rejected.
+
+Write it down somewhere secure. You'll use it in Step 3.
+
+---
+
+### `gitlab_url` — your GitLab base URL
+
+Just the root URL of your GitLab instance, no trailing slash.
+
+- Self-hosted example: `https://gitlab.vipers.io`
+- GitLab.com: `https://gitlab.com`
+
+Add to your notepad: `gitlab_url = https://gitlab.vipers.io`
+
+---
+
+### `gitlab_namespace` — the GitLab group that owns this repo
+
+This is the **group name**, not your username and not the repo name. In GitLab, navigate to your project. The URL looks like `https://gitlab.vipers.io/falcon-park/not-big-bang`. The part between the host and the repo name is the namespace — `falcon-park` in that example.
+
+Add to your notepad: `gitlab_namespace = falcon-park`
+
+---
+
+### `gitlab_repo` — the repo name
+
+The project name inside that group. For this repo it's `not-big-bang`.
+
+Add to your notepad: `gitlab_repo = not-big-bang`
+
+---
+
+### `gitlab_tls_thumbprint` — GitLab's TLS certificate fingerprint
+
+Run this command, replacing the hostname with your GitLab instance:
 
 ```bash
 openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
@@ -93,28 +151,18 @@ openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
   | sed 's/://g' | tr '[:upper:]' '[:lower:]' | cut -d= -f2
 ```
 
-Copy that output — you'll paste it as `GITLAB_TLS_THUMBPRINT` below.
+Copy the output — it'll be a long hex string. That's your thumbprint.
 
-After this apply, Terraform outputs a role ARN. Go to your GitLab project → Settings → CI/CD → Variables and add all of these — the pipeline won't work without them:
+Add to your notepad: `gitlab_tls_thumbprint = abc123...`
 
-| Variable | Falcon-Park example | Notes |
-|----------|-------------------|-------|
-| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | from the `gitlab_ci_role_arn` output below |
-| `TF_STATE_BUCKET` | `falcon-park-tfstate` | your bucket name from 01-network |
-| `PROJECT_NAME` | `falcon-park` | your project slug |
-| `ENVIRONMENT` | `dev` | |
-| `AD_DOMAIN_NAME` | `corp.falconpark.gov` | your AD FQDN |
-| `AD_SHORT_NAME` | `FALCONPARK` | your NetBIOS name |
-| `GITLAB_URL` | `https://gitlab.vipers.io` | your GitLab instance base URL |
-| `GITLAB_NAMESPACE` | `falcon-park` | your GitLab group/namespace |
-| `GITLAB_TLS_THUMBPRINT` | `abc123...` | from the openssl command above |
-| `CLUSTER_NAME` | `falcon-park-dev` | your project slug + `-` + environment (e.g. `falcon-park-dev`), used by the k8s deploy jobs |
+---
 
-And one **Protected + Masked variable** (not plain text — this one stays hidden in logs):
+### `project` and `tfstate_bucket`
 
-| Variable | Value |
-|----------|-------|
-| `AD_ADMIN_PASSWORD` | your AD admin password |
+These came from `01-network`. Use the same values you used there.
+
+- `project` — your contract slug, e.g. `falcon-park`
+- `tfstate_bucket` — your S3 state bucket, e.g. `falcon-park-tfstate`
 
 ---
 
@@ -138,6 +186,8 @@ terraform init \
 
 ## Step 2 — Plan
 
+Paste your values from the notepad into this command:
+
 ```bash
 terraform plan \
   -var="project=falcon-park" \                              # <---- change me
@@ -145,10 +195,10 @@ terraform plan \
   -var="tfstate_bucket=falcon-park-tfstate" \               # <---- change me
   -var="ad_domain_name=corp.falconpark.gov" \               # <---- change me
   -var="ad_short_name=FALCONPARK" \                         # <---- change me
-  -var="gitlab_url=https://gitlab.vipers.io" \              # <---- change me to your GitLab instance URL
-  -var="gitlab_namespace=falcon-park" \                     # <---- change me to your GitLab group/namespace
-  -var="gitlab_repo=not-big-bang" \                         # <---- change me to your repo name
-  -var="gitlab_tls_thumbprint=yourthumbprinthere"           # <---- change me, see thumbprint note below
+  -var="gitlab_url=https://gitlab.vipers.io" \              # <---- change me
+  -var="gitlab_namespace=falcon-park" \                     # <---- change me
+  -var="gitlab_repo=not-big-bang" \                         # <---- change me
+  -var="gitlab_tls_thumbprint=yourthumbprinthere"           # <---- change me
 ```
 
 The plan should show Managed AD, a DHCP option set, an OIDC provider, an IAM role, and a Secrets Manager secret.
@@ -157,14 +207,14 @@ The plan should show Managed AD, a DHCP option set, an OIDC provider, an IAM rol
 
 ## Step 3 — Apply
 
-Passing a password on the command line saves it to shell history. Use `read` to keep it out:
+**First**, load your AD admin password into the shell environment. This keeps it out of shell history and off the command line entirely:
 
 ```bash
 read -s TF_VAR_ad_admin_password && export TF_VAR_ad_admin_password
 # Type your password and press Enter — nothing echoes to the screen
 ```
 
-Then apply without the password in the command:
+**Then** apply with the same vars as the plan. Terraform picks up `TF_VAR_ad_admin_password` automatically from the environment:
 
 ```bash
 terraform apply \
@@ -177,7 +227,6 @@ terraform apply \
   -var="gitlab_namespace=falcon-park" \                     # <---- change me
   -var="gitlab_repo=not-big-bang" \                         # <---- change me
   -var="gitlab_tls_thumbprint=yourthumbprinthere"           # <---- change me
-# TF_VAR_ad_admin_password is picked up automatically from the environment
 ```
 
 Type `yes`. Managed AD takes **20-45 minutes** to provision. This is not a bug. AWS is spinning up domain controllers in two AZs. Go get coffee. Bob can wait.
@@ -187,16 +236,54 @@ Type `yes`. Managed AD takes **20-45 minutes** to provision. This is not a bug. 
 ## What Success Looks Like
 
 ```
-Apply complete! Resources: 9 added, 0 changed, 0 destroyed.
+Apply complete! Resources: 8 added, 0 changed, 0 destroyed.
 
 Outputs:
-  managed_ad_id          = "d-0abc12345"
-  managed_ad_dns_ips     = toset(["10.0.10.15", "10.0.11.22"])
-  gitlab_ci_role_arn      = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci"
-  ad_admin_secret_arn    = "arn:aws-us-gov:secretsmanager:us-gov-west-1:123456789:secret:falcon-park-dev/managed-ad/admin-password"
+  managed_ad_id                = "d-0abc12345"
+  managed_ad_dns_ips           = toset(["10.0.10.15", "10.0.11.22"])
+  managed_ad_security_group_id = "sg-0abc12345"
+  gitlab_ci_role_arn           = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci"
+  gitlab_oidc_provider_arn     = "arn:aws-us-gov:iam::123456789:oidc-provider/gitlab.vipers.io"
+  ad_admin_secret_arn          = "arn:aws-us-gov:secretsmanager:us-gov-west-1:123456789:secret:falcon-park-dev/managed-ad/admin-password"
 ```
 
-Copy that `gitlab_ci_role_arn` and add it to your GitLab project CI/CD variables as `AWS_ROLE_ARN` now, before you forget.
+---
+
+## After Apply — Wire Up GitLab CI/CD Variables
+
+Now that Terraform has created the IAM role, you need to tell GitLab about it. Go to your GitLab project → **Settings → CI/CD → Variables** and add all of the following.
+
+The most important value is `AWS_ROLE_ARN` — it comes from the `gitlab_ci_role_arn` line in your Terraform output. Copy it now and add it to your notepad. It looks like:
+
+```
+gitlab_ci_role_arn = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci"
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                this whole ARN goes into AWS_ROLE_ARN
+```
+
+**Standard variables (Unprotected + Visible):**
+| Variable | Falcon-Park example | Notes |
+|----------|-------------------|-------|
+| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | the `gitlab_ci_role_arn` value from your Terraform output |
+| `TF_STATE_BUCKET` | `falcon-park-tfstate` | your bucket name from 01-network |
+| `PROJECT_NAME` | `falcon-park` | your project slug |
+| `ENVIRONMENT` | `dev` | |
+| `AD_DOMAIN_NAME` | `corp.falconpark.gov` | your AD FQDN |
+| `AD_SHORT_NAME` | `FALCONPARK` | your NetBIOS name |
+| `GITLAB_URL` | `https://gitlab.vipers.io` | your GitLab instance base URL |
+| `GITLAB_NAMESPACE` | `falcon-park` | your GitLab group name |
+| `GITLAB_TLS_THUMBPRINT` | `abc123...` | from the openssl command above |
+| `CLUSTER_NAME` | `falcon-park-dev` | project slug + `-` + environment |
+
+**Protected + Masked variable** (set the "Masked" toggle — this one must never appear in logs):
+
+| Variable | Value |
+|----------|-------|
+| `AD_ADMIN_PASSWORD` | your AD admin password |
+
+When done it should look like this:
+
+![GitLab CI/CD variables configured](gitlab-vars.png)
 
 ---
 
@@ -204,10 +291,22 @@ Copy that `gitlab_ci_role_arn` and add it to your GitLab project CI/CD variables
 
 Bob in Tampa is the reason this whole project exists. Before you can provision him a WorkSpace in `03-workspaces`, he needs to exist in Active Directory.
 
-Go to **AWS Directory Service → your directory → Actions → Open Active Directory Users and Computers** in the AWS console. This launches a browser-based RDP management session — no domain-joined machine required.
+AWS now has a native user management interface built directly into the Directory Service console — no EC2 jump box, no RDP session, no extra cost. The Actions menu does offer "Launch directory administration EC2 instance" for shops that need full AD tooling (GPOs, schema extensions, complex OUs), but for a small team deploying WorkSpaces you don't need any of that.
 
-Navigate to your domain, then to **Users** (or whatever OU you want users in), right-click → **New → User**:
+![AWS Directory Service console showing the Users tab and Enable button](active-directory.png)
 
+**To enable the native console user management:**
+
+1. Go to **AWS Directory Service → Directories → your directory**
+2. On the directory detail page, find **User and group management** on the right side — it will say "Disabled"
+3. Click **Enable** next to it
+4. The **Users** tab will now let you create and manage users directly in the browser
+
+**To create Bob:**
+
+1. Click the **Users** tab
+2. Click **Add user**
+3. Fill in:
 ```
 First name:  Bob
 Last name:   Johnson
@@ -255,3 +354,4 @@ Something went sideways? Paste the terminal output below, then drop this whole f
 | `Error: AccessDeniedException` on Secrets Manager | Missing IAM permissions | Add `secretsmanager:*` to your local IAM profile |
 | OIDC `Error: Could not assume role` in CI | namespace/repo name mismatch | Re-apply with the exact GitLab namespace and repo name. Case-sensitive. |
 | `Error: InvalidSubnet` on AD | Wrong subnet IDs | Make sure `01-network` applied cleanly first |
+| `ValidationException: Value at 'password' failed to satisfy constraint` | AD password doesn't meet complexity requirements | Unset `TF_VAR_ad_admin_password`, run `read -s TF_VAR_ad_admin_password && export TF_VAR_ad_admin_password` again with a password that has uppercase, lowercase, a number, and a special character |

@@ -191,6 +191,7 @@ All terraform commands below run from the `terraform/01-network/` directory.
 
 ```bash
 cd terraform/01-network
+# initilize terraform and use the remote s3 bucket you just created 
 terraform init \
   -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
 ```
