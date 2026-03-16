@@ -38,6 +38,8 @@ default:
     name: hashicorp/terraform:${TF_VERSION}
     entrypoint: [""]
   before_script:
+    # hashicorp/terraform is minimal Alpine — install AWS CLI before anything else
+    - apk add --no-cache aws-cli
     # Exchange GitLab JWT for AWS credentials via OIDC — no static keys
     - >
       export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
