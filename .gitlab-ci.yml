@@ -37,16 +37,19 @@ default:
   image:
     name: hashicorp/terraform:${TF_VERSION}
     entrypoint: [""]
+  id_tokens:
+    AWS_OIDC_TOKEN:
+      aud: sts.amazonaws.com
   before_script:
     # hashicorp/terraform is minimal Alpine — install AWS CLI before anything else
     - apk add --no-cache aws-cli
-    # Exchange GitLab JWT for AWS credentials via OIDC — no static keys
+    # Exchange GitLab OIDC token for short-lived AWS credentials — no static keys
     - >
       export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s"
       $(aws sts assume-role-with-web-identity
       --role-arn "${AWS_ROLE_ARN}"
       --role-session-name "gitlab-ci-${CI_JOB_ID}"
-      --web-identity-token "${CI_JOB_JWT_V2}"
+      --web-identity-token "${AWS_OIDC_TOKEN}"
       --duration-seconds 3600
       --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]"
       --output text))
