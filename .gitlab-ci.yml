@@ -259,9 +259,9 @@ deploy:keycloak:
   script:
     - helm repo add bitnami https://charts.bitnami.com/bitnami
     - helm repo update
-    - helm upgrade --install keycloak bitnami/keycloak
-      --namespace platform-auth
-      --values k8s-manifests/01-platform-auth/keycloak-values.yaml
+    - helm upgrade --install keycloak bitnami/keycloak \
+      --namespace platform-auth \
+      --values k8s-manifests/01-platform-auth/keycloak-values.yaml \
       --wait --timeout 10m
 
 deploy:strimzi:
@@ -270,10 +270,10 @@ deploy:strimzi:
   script:
     - helm repo add strimzi https://strimzi.io/charts/
     - helm repo update
-    - helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator
-      --namespace data-layer
-      --set watchNamespaces="{data-layer}"
-      --version 0.41.0    # <---- change me if you need a newer Strimzi version
+    - helm upgrade --install strimzi-kafka-operator strimzi/strimzi-kafka-operator \
+      --namespace data-layer \
+      --set watchNamespaces="{data-layer}" \
+      --version 0.41.0 \
       --wait --timeout 5m
 
 deploy:kafka:
@@ -283,9 +283,9 @@ deploy:kafka:
     - kubectl apply -f k8s-manifests/02-data-layer/kafka-cluster.yaml
     # Wait up to 5 minutes for all 3 brokers. If it times out, check the Strimzi
     # operator logs: kubectl logs -n data-layer -l name=strimzi-cluster-operator
-    - kubectl wait kafka/main
-      --for=condition=Ready
-      --timeout=300s
+    - kubectl wait kafka/main \
+      --for=condition=Ready \
+      --timeout=300s \
       -n data-layer
 
 deploy:observability:
@@ -294,14 +294,14 @@ deploy:observability:
   script:
     - helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     - helm repo update
-    - helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack
-      --namespace observability
-      --values k8s-manifests/03-observability/prometheus-stack-values.yaml
+    - helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+      --namespace observability \
+      --values k8s-manifests/03-observability/prometheus-stack-values.yaml \
       --wait --timeout 10m
     - helm repo add fluent https://fluent.github.io/helm-charts
     - helm repo update
-    - helm upgrade --install fluent-bit fluent/fluent-bit
-      --namespace observability
-      --values k8s-manifests/03-observability/fluent-bit-values.yaml
-      --set "daemonSetVolumes[0].hostPath.path=/var/log"
+    - helm upgrade --install fluent-bit fluent/fluent-bit \
+      --namespace observability \
+      --values k8s-manifests/03-observability/fluent-bit-values.yaml \
+      --set "daemonSetVolumes[0].hostPath.path=/var/log" \
       --wait --timeout 5m
