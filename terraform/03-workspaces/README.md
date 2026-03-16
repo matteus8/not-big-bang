@@ -82,22 +82,18 @@ Find "Standard with Windows Server 2022" or similar. Copy the `BundleId` — it 
 
 ### Create the OU in AD first
 
-WorkSpaces needs an OU to place computer objects. You don't have a domain-joined machine yet — that's fine. AWS Directory Service lets you do this from the console.
+WorkSpaces needs an OU to place computer objects. You don't have a domain-joined machine yet — that's fine. Use the same native console user management you used to create Bob.
 
-Go to **AWS Directory Service → your directory → Actions → Open Active Directory Users and Computers** (this launches an RDP-based management console directly from the browser, no client needed).
-
-Navigate to your domain, find or create `Computers`, then create the OU:
-
+1. Go to **AWS Directory Service → Directories → your directory**
+2. Click the **Computers** tab (or **Groups** — whichever shows your directory tree)
+3. Create a new OU named `WorkSpaces` under `Computers`:
 ```
 OU=WorkSpaces,OU=Computers,DC=corp,DC=falconpark,DC=gov    # <---- change me to match your AD domain
 ```
 
-If you prefer PowerShell, you can also do this from a `t3.micro` Windows instance joined to the domain:
-```powershell
-New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=Computers,DC=corp,DC=falconpark,DC=gov"
-```
+> When you pursue an ATO and need full GPO management you'll use the EC2 directory administration instance instead. For now the console handles this. See `docs/ato-mappings.md`.
 
-If you skip this entirely, the WorkSpaces directory registration will fail with a vague error about the OU not existing.
+If you skip this step entirely, the WorkSpaces directory registration will fail with a vague error about the OU not existing.
 
 ---
 

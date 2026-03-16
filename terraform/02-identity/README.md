@@ -345,6 +345,16 @@ Push a commit to any branch. The GitLab CI pipeline should trigger and authentic
 
 ---
 
+## About That Pipeline — It's Blocked, and That's Fine
+
+After you push the repo to GitLab the pipeline will trigger and immediately stop at `apply:network` waiting for a manual approval. **Don't click it.** You already applied layers 01 and 02 from your laptop. Clicking play would just re-run Terraform against infrastructure that already exists — harmless but unnecessary.
+
+The manual gate is intentional. It's there so a human has to approve before Terraform touches anything. For layers 01–03 that human is you, running from your terminal. CI takes over at layer 04, and when that time comes you'll click the gate deliberately.
+
+For now the pipeline sitting at "blocked — requires manual action" is the correct state. Move on.
+
+---
+
 ## What's Next
 
 Go to `03-workspaces/`. The SA applies that layer from their terminal using the same admin credentials. Once Bob has a desktop and the pipeline authenticates cleanly, you're done with local applies.
