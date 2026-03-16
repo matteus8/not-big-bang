@@ -189,9 +189,16 @@ So for right now: ignore CI, run terraform from your terminal.
 
 All terraform commands below run from the `terraform/01-network/` directory.
 
+> **Before every terraform command:** Make sure your AWS profile is set and working. Stale credentials in environment variables silently override your profile and cause `InvalidClientTokenId` errors that look unrelated to credentials. Run this first:
+> ```bash
+> unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+> export AWS_PROFILE=govcloud
+> aws sts get-caller-identity   # must return your account ID before continuing
+> ```
+> If `get-caller-identity` fails, fix credentials before touching Terraform.
+
 ```bash
 cd terraform/01-network
-# initilize terraform and use the remote s3 bucket you just created 
 terraform init \
   -backend-config="bucket=falcon-park-tfstate"    # <---- change me to your bucket name
 ```
@@ -239,6 +246,27 @@ Three VPC IDs in the output. That's your network. Go to `02-identity/` next.
 
 ---
 
+## Tearing Down
+
+**Order matters.** The Managed AD directory (built in `02-identity`) creates ENIs inside the hub private subnets. AWS will not delete those subnets while AD is alive. If you try to destroy `01-network` before `02-identity`, Terraform will hang for 15+ minutes and then fail with `DependencyViolation`.
+
+Always destroy in this order:
+
+```
+03-workspaces → 02-identity → 01-network
+```
+
+Wait for each layer to fully complete before starting the next. `02-identity` destroy takes **20-45 minutes** because of the AD directory deletion. Do not skip ahead.
+
+```bash
+# From terraform/01-network/ after 02-identity is fully destroyed:
+terraform destroy \
+  -var="project=falcon-park" \                     # <---- change me
+  -var="environment=dev"
+```
+
+---
+
 ## Troubleshooting
 
 Something went sideways? Copy the full terminal output below the line, then paste this entire file into Claude or ChatGPT and say *"help me fix this Terraform error."* The context above tells it exactly what you're building.
@@ -261,3 +289,5 @@ Something went sideways? Copy the full terminal output below the line, then past
 | `Error: S3 bucket not found` | Wrong bucket name in `-backend-config` | Re-run `terraform init` with the correct bucket |
 | `Error: InvalidVpcID.NotFound` on peering | VPC creation failed upstream | Check `terraform state list` and re-apply |
 | NAT Gateway stuck creating | Totally normal, it's slow | Wait 5 more minutes |
+| Subnet stuck destroying for 10+ minutes | Managed AD has ENIs attached to the hub private subnets — AWS won't release them while the directory is active | Destroy `02-identity` first (`terraform destroy` from `terraform/02-identity/`), wait for the AD directory to fully delete (~20 min), then re-run the destroy here. You cannot delete the hub private subnets while AD is alive. |
+| `InvalidClientTokenId` on init or plan | Stale AWS credentials in environment variables | Run `unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN`, then confirm `aws sts get-caller-identity` works before retrying. |

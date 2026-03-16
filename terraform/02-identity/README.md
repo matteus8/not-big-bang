@@ -88,7 +88,7 @@ Rules:
 - No spaces, no underscores
 - Don't use `.local` — it conflicts with mDNS
 - Don't use the bare public root (`falconpark.gov`) — always add a subdomain prefix (`corp.falconpark.gov`)
-- Once applied, it's permanent
+- Once applied, it's permanent — changing this value destroys the directory and rebuilds it from scratch. You lose all users, all groups, all WorkSpaces. There is no rename. Pick it right the first time.
 
 Add to your notepad: `ad_domain_name = corp.yourcontract.gov`
 
@@ -143,7 +143,7 @@ Add to your notepad: `gitlab_repo = not-big-bang`
 
 ### `gitlab_tls_thumbprint` — GitLab's TLS certificate fingerprint
 
-Run this command, replacing the hostname with your GitLab instance:
+Run this command — replace `gitlab.vipers.io` with your actual GitLab hostname (or `gitlab.com` if you're using GitLab.com):
 
 ```bash
 openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
@@ -151,7 +151,7 @@ openssl s_client -connect gitlab.vipers.io:443 2>/dev/null \
   | sed 's/://g' | tr '[:upper:]' '[:lower:]' | cut -d= -f2
 ```
 
-Copy the output — it'll be a long hex string. That's your thumbprint.
+Copy the output — it's a 40-character hex string. That's your thumbprint. It changes when the TLS certificate renews, so re-run this if OIDC authentication suddenly breaks after working fine.
 
 Add to your notepad: `gitlab_tls_thumbprint = abc123...`
 
@@ -240,12 +240,14 @@ Apply complete! Resources: 8 added, 0 changed, 0 destroyed.
 
 Outputs:
   managed_ad_id                = "d-0abc12345"
-  managed_ad_dns_ips           = toset(["10.0.10.15", "10.0.11.22"])
+  managed_ad_dns_ips           = toset(["10.0.10.65", "10.0.11.202"])
   managed_ad_security_group_id = "sg-0abc12345"
-  gitlab_ci_role_arn           = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci"
-  gitlab_oidc_provider_arn     = "arn:aws-us-gov:iam::123456789:oidc-provider/gitlab.vipers.io"
-  ad_admin_secret_arn          = "arn:aws-us-gov:secretsmanager:us-gov-west-1:123456789:secret:falcon-park-dev/managed-ad/admin-password"
+  gitlab_ci_role_arn           = "arn:aws-us-gov:iam::123456789012:role/falcon-park-dev-gitlab-ci"
+  gitlab_oidc_provider_arn     = "arn:aws-us-gov:iam::123456789012:oidc-provider/gitlab.vipers.io"
+  ad_admin_secret_arn          = "arn:aws-us-gov:secretsmanager:us-gov-west-1:123456789012:secret:falcon-park-dev/managed-ad/admin-password-xxxxxx"
 ```
+
+The `gitlab_ci_role_arn` output is the value you need for the `AWS_ROLE_ARN` GitLab CI variable in the next step. Copy it exactly — it's easy to accidentally grab the OIDC provider ARN instead, which looks similar but will cause `ValidationError: Request ARN is invalid` in the pipeline.
 
 ---
 
@@ -291,7 +293,7 @@ AWS has a native user management interface built into the Directory Service cons
 ![AWS Directory Service console showing the Users tab and Enable button](active-directory.png)
 
 1. Go to **AWS Directory Service → Directories → your directory**
-2. Click **Enable** for users tab
+2. You'll see **"User and group management — Enable"** near the top of the page. Click **Enable**. Without this, the Users tab shows nothing and you cannot create users from the console.
 3. Go to the **Users** tab → **Add user**
 4. Fill in:
 ```
@@ -386,3 +388,5 @@ Something went sideways? Paste the terminal output below, then drop this whole f
 | `Error: AccessDeniedException` on Secrets Manager | Missing IAM permissions on your local profile | Add `secretsmanager:*` to your local IAM user's permissions. |
 | OIDC `Error: Could not assume role` in CI | `gitlab_namespace` or `gitlab_repo` var doesn't match exactly | Re-apply with the exact GitLab group name and repo name. Case-sensitive. |
 | `Error: InvalidSubnet` on AD | `01-network` didn't apply cleanly | Run `terraform output` in `01-network/` to confirm the hub VPC subnets exist. |
+| `git push` rejected: "fetch first" or "non-fast-forward" | GitLab auto-created a default README when you made the project, and your local history doesn't include it | Run `git pull gitlab main --allow-unrelated-histories --no-rebase`, resolve the conflict in README.md by keeping your local version, commit the merge, then push again. |
+| `ValidationError: Request ARN is invalid` in CI pipeline | `AWS_ROLE_ARN` variable is set to the wrong ARN — the OIDC provider ARN looks similar but is different | The value must be the IAM **role** ARN from `gitlab_ci_role_arn` output, e.g. `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci`. Not the OIDC provider ARN. |

@@ -52,13 +52,13 @@ Run these to confirm the earlier layers finished cleanly:
 ```bash
 # Confirm AD is up and shows Active status
 aws ds describe-directories \
-  --region us-gov-west-1 \
+  --region us-gov-west-1 \                         # <---- change me to your region
   --query 'DirectoryDescriptions[*].[DirectoryId,Name,Stage]' \
   --output table
 
 # Confirm your WorkSpaces spoke subnets exist
 aws ec2 describe-subnets \
-  --region us-gov-west-1 \
+  --region us-gov-west-1 \                         # <---- change me to your region
   --filters "Name=tag:Layer,Values=01-network" \
   --query 'Subnets[*].[SubnetId,CidrBlock,Tags[?Key==`Name`].Value|[0]]' \
   --output table
@@ -73,27 +73,48 @@ You need a bundle ID for the desktop image. List what's available in GovCloud:
 ```bash
 aws workspaces describe-workspace-bundles \
   --owner AMAZON \
-  --region us-gov-west-1 \
+  --region us-gov-west-1 \                         # <---- change me to your region
   --query 'Bundles[*].[BundleId,Name]' \
   --output table
 ```
 
-Find "Standard with Windows Server 2022" or similar. Copy the `BundleId` — it looks like `wsb-abc123def`.
+Find "Standard with Windows Server 2022" or similar. Copy the `BundleId` — it looks like `wsb-abc123def`. The Standard bundle is the right default for most GovCon teams — enough compute for office work without the graphics card tax.
 
 ### Create the OU in AD first
 
-WorkSpaces needs an OU to place computer objects. You don't have a domain-joined machine yet — that's fine. Use the same native console user management you used to create Bob.
+WorkSpaces needs an OU to place computer objects. This cannot be done from the Directory Service console UI — you need to use the directory administration EC2.
 
+**Launch the admin EC2:**
 1. Go to **AWS Directory Service → Directories → your directory**
-2. Click the **Computers** tab (or **Groups** — whichever shows your directory tree)
-3. Create a new OU named `WorkSpaces` under `Computers`:
-```
-OU=WorkSpaces,OU=Computers,DC=corp,DC=falconpark,DC=gov    # <---- change me to match your AD domain
+2. Click **Actions → Launch directory administration EC2 instance**
+3. AWS creates a Windows EC2 with RSAT tools pre-installed. Once it's running, connect to it via **EC2 → Instances → your instance → Connect → Session Manager**.
+
+**Create the OU via PowerShell:**
+
+First, retrieve your AD admin password from **AWS Secrets Manager → your secret → Retrieve secret value**.
+
+Then in the Session Manager terminal, type `powershell` and run:
+
+```powershell
+$password = ConvertTo-SecureString "YOUR_AD_ADMIN_PASSWORD" -AsPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential("Admin@corp.falconpark.gov", $password)
+New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov"
 ```
 
-> When you pursue an ATO and need full GPO management you'll use the EC2 directory administration instance instead. For now the console handles this. See `docs/ato-mappings.md`.
+Replace `FALCONPARK` with your `ad_short_name`, and adjust the domain components to match your `ad_domain_name`. No output means success.
+
+> **Important:** The OU goes under `OU=<AD_SHORT_NAME>`, not `OU=Computers`. AWS Managed AD restricts the `Admin` user from creating objects directly under `CN=Computers`. You get an "Access is denied" error if you try.
+
+Verify it was created:
+```powershell
+Get-ADOrganizationalUnit -Filter * -SearchBase "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov" | Select-Object DistinguishedName
+```
+
+You should see `OU=WorkSpaces,OU=FALCONPARK,DC=corp,...` in the output.
 
 If you skip this step entirely, the WorkSpaces directory registration will fail with a vague error about the OU not existing.
+
+> **Clean up the admin EC2 when you're done.** The directory administration EC2 costs money while it's running and you don't need it after the OU is created. Go to **EC2 → Instances**, find the instance, and **Terminate** it. If you leave it running and later try to destroy `01-network`, Terraform will hang with `DependencyViolation` because the EC2 is sitting inside the hub VPC.
 
 ---
 
@@ -116,6 +137,8 @@ terraform plan \
   -var="project=falcon-park" \                     # <---- change me
   -var="environment=dev" \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
+  -var="ad_domain_name=corp.falconpark.gov" \      # <---- change me — must match 02-identity exactly
+  -var="ad_short_name=FALCONPARK" \                # <---- change me — must match 02-identity exactly
   -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me to the bundle ID from the lookup above
   -var='workspace_users=["bjohnson"]'              # <---- start with Bob, add more later
 ```
@@ -131,6 +154,8 @@ terraform apply \
   -var="project=falcon-park" \                     # <---- change me
   -var="environment=dev" \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
+  -var="ad_domain_name=corp.falconpark.gov" \      # <---- change me
+  -var="ad_short_name=FALCONPARK" \                # <---- change me
   -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me
   -var='workspace_users=["bjohnson"]'              # <---- Bob first, add more names when ready
 ```
@@ -227,7 +252,8 @@ Paste the error output below and drop this whole file into Claude or ChatGPT: *"
 
 | Error | What it means | Fix |
 |-------|---------------|-----|
-| `InvalidParameterValuesException: The OU ... does not exist` | Skipped the OU creation step | Create the OU in AD before applying |
-| `Error: User not found` | Username not in AD | Create the user in AD first, then apply |
+| `InvalidParameterValuesException: The OU ... does not exist` | Skipped the OU creation step, or OU path is wrong | Create the OU under `OU=<AD_SHORT_NAME>`, not `OU=Computers` — see the OU creation section above |
+| `Error: User not found` | Username not in AD | Create the user in AD first (in 02-identity), then apply |
 | WorkSpace stuck in `PENDING` | Normal provisioning lag | Wait 30 minutes. If still stuck, check CloudTrail for the underlying error. |
 | `Error: InvalidResourceStateException` on directory | AD not fully provisioned | Go back to `02-identity`, confirm the AD state is `Active` in the console |
+| `Access is denied` when creating OU via PowerShell | Trying to create under `CN=Computers` — Managed AD blocks this | Use `OU=<AD_SHORT_NAME>,DC=...` as the `-Path`. AWS Managed AD only grants Admin rights within the delegated OU, not the built-in Computers container. |

@@ -58,7 +58,6 @@ resource "aws_workspaces_directory" "main" {
 
   workspace_access_properties {
     device_type_android    = "DENY"
-    device_type_chromebook = "DENY"
     device_type_ios        = "DENY"
     device_type_linux      = "DENY"
     device_type_osx        = "DENY"     # adjust if your SA is on a Mac
@@ -72,7 +71,7 @@ resource "aws_workspaces_directory" "main" {
     enable_maintenance_mode             = true  # AWS handles patching windows
     user_enabled_as_local_administrator = false # users are not local admins — STIG
     custom_security_group_id            = aws_security_group.workspaces.id
-    default_ou                          = "OU=WorkSpaces,OU=Computers,DC=${join(",DC=", split(".", var.ad_domain_name))}"
+    default_ou                          = "OU=WorkSpaces,OU=${var.ad_short_name},DC=${join(",DC=", split(".", var.ad_domain_name))}"
   }
 
   tags = local.common_tags

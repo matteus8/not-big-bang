@@ -45,6 +45,16 @@ variable "user_volume_encryption" {
   default     = true
 }
 
+variable "ad_domain_name" {
+  type        = string
+  description = "AD domain name, e.g. corp.falconpark.gov. Used to build the WorkSpaces OU path."
+}
+
+variable "ad_short_name" {
+  type        = string
+  description = "AD NetBIOS short name, e.g. FALCONPARK. Used to build the WorkSpaces OU path."
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
