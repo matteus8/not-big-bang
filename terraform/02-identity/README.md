@@ -251,20 +251,15 @@ Outputs:
 
 ## After Apply — Wire Up GitLab CI/CD Variables
 
-Now that Terraform has created the IAM role, you need to tell GitLab about it. Go to your GitLab project → **Settings → CI/CD → Variables** and add all of the following.
+Go to your GitLab project → **Settings → CI/CD → Variables** and add all of the following.
 
-The most important value is `AWS_ROLE_ARN` — it comes from the `gitlab_ci_role_arn` line in your Terraform output. Copy it now and add it to your notepad. It looks like:
-
-```
-gitlab_ci_role_arn = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci"
-                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                                this whole ARN goes into AWS_ROLE_ARN
-```
+`AWS_ROLE_ARN` is the most important one — it comes directly from the `gitlab_ci_role_arn` line in your Terraform output. The full ARN is the value.
 
 **Standard variables (Unprotected + Visible):**
+
 | Variable | Falcon-Park example | Notes |
 |----------|-------------------|-------|
-| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | the `gitlab_ci_role_arn` value from your Terraform output |
+| `AWS_ROLE_ARN` | `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci` | from `gitlab_ci_role_arn` in your Terraform output |
 | `TF_STATE_BUCKET` | `falcon-park-tfstate` | your bucket name from 01-network |
 | `PROJECT_NAME` | `falcon-park` | your project slug |
 | `ENVIRONMENT` | `dev` | |
@@ -275,7 +270,7 @@ gitlab_ci_role_arn = "arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-
 | `GITLAB_TLS_THUMBPRINT` | `abc123...` | from the openssl command above |
 | `CLUSTER_NAME` | `falcon-park-dev` | project slug + `-` + environment |
 
-**Protected + Masked variable** (set the "Masked" toggle — this one must never appear in logs):
+**Protected + Masked variable** (toggle "Masked" on — this must never appear in logs):
 
 | Variable | Value |
 |----------|-------|
@@ -289,46 +284,70 @@ When done it should look like this:
 
 ## After Apply — Create Your First AD User
 
-Bob in Tampa is the reason this whole project exists. Before you can provision him a WorkSpace in `03-workspaces`, he needs to exist in Active Directory.
+Bob in Tampa is the reason this whole project exists. Before `03-workspaces` can provision him a desktop, he needs to exist in Active Directory.
 
-AWS now has a native user management interface built directly into the Directory Service console — no EC2 jump box, no RDP session, no extra cost. The Actions menu does offer "Launch directory administration EC2 instance" for shops that need full AD tooling (GPOs, schema extensions, complex OUs), but for a small team deploying WorkSpaces you don't need any of that.
+AWS has a native user management interface built into the Directory Service console — no EC2 instance, no RDP. For a small shop this is all you need. When you pursue an ATO you'll need to edit GPOs, which does require launching the EC2 directory administration instance — but that's a later problem. See `docs/ato-mappings.md`.
 
 ![AWS Directory Service console showing the Users tab and Enable button](active-directory.png)
 
-**To enable the native console user management:**
-
 1. Go to **AWS Directory Service → Directories → your directory**
-2. On the directory detail page, find **User and group management** on the right side — it will say "Disabled"
-3. Click **Enable** next to it
-4. The **Users** tab will now let you create and manage users directly in the browser
-
-**To create Bob:**
-
-1. Click the **Users** tab
-2. Click **Add user**
-3. Fill in:
+2. Click **Enable** for users tab
+3. Go to the **Users** tab → **Add user**
+4. Fill in:
 ```
-First name:  Bob
-Last name:   Johnson
-User logon:  bjohnson           ← this is what goes in workspace_users later
-Password:    <set initial password, mark as "must change at next logon">
+User logon name:  bjohnson    ← this is what goes in workspace_users later
+First name:       Bob
+Last name:        Johnson
+Password:         <set a strong initial password>
+```
+5. **Groups — skip it.** Bob is already in Domain Users by default. That's all he needs for a WorkSpace.
+6. Review and click **Create user**.
+
+> **How many WorkSpaces will this build?** One per username in `workspace_users`. Start with `bjohnson`. Add more usernames later and re-apply — Terraform only creates the new ones, existing WorkSpaces are untouched. There's no minimum; AWS service quotas set the upper limit but a small team won't get close.
+
+---
+
+## After Apply — Push This Repo to Your GitLab
+
+You cloned this repo from GitHub and have been running Terraform locally. That's fine for layers 01–03, but CI takes over at layer 04 — and CI runs off GitLab, not GitHub. You need to push this repo to your Vipers.io GitLab instance now, before you need it.
+
+This is a one-time setup. You're adding your GitLab as a second remote so you can push to both GitHub and GitLab independently.
+
+**1. Add your GitLab instance as a remote:**
+
+```bash
+git remote add gitlab https://gitlab.vipers.io/falcon-park/not-big-bang.git
+# swap in your actual GitLab URL, group, and repo name
 ```
 
-That's it. One user. When you get to `03-workspaces`, you'll pass `bjohnson` as the first entry in `workspace_users` and Terraform will provision one WorkSpace for him. If the rest of the team needs desktops later, add them to AD the same way and add their usernames to the list — Terraform only creates the new ones, existing WorkSpaces are untouched.
+**2. Verify both remotes are there:**
 
-> **How many WorkSpaces will this build?** Exactly as many usernames as you put in `workspace_users`. Start with one (`bjohnson`). Add more when the team grows. There's no minimum and no upper limit enforced by Terraform — AWS limits depend on your service quota, but for a small team you won't hit it.
+```bash
+git remote -v
+# you should see both 'origin' (GitHub) and 'gitlab' (your GitLab)
+```
+
+**3. Push to GitLab:**
+
+```bash
+git push gitlab main
+```
+
+GitLab will prompt for your credentials if you haven't set up SSH keys. If you're on a CAC-gated GitLab instance, follow your org's SSH key or credential setup process — that's outside the scope of this repo.
+
+> Once the repo is in GitLab, every push to `main` will trigger the CI pipeline. That pipeline is what runs `04-kubernetes` and beyond — you won't be running those layers manually from your laptop.
 
 ---
 
 ## After Apply — Test OIDC
 
-Push a commit to a branch. The GitLab CI pipeline should trigger and use the OIDC role to authenticate with AWS. If it says `Error: Could not assume role` — double-check the `gitlab_namespace` and `gitlab_repo` vars match your actual GitLab group and project name exactly. **Case-sensitive.**
+Push a commit to any branch. The GitLab CI pipeline should trigger and authenticate with AWS via the OIDC role. If it says `Error: Could not assume role` — check that `gitlab_namespace` and `gitlab_repo` exactly match your GitLab group and project name. Case-sensitive.
 
 ---
 
 ## What's Next
 
-Go to `03-workspaces/`. The SA will apply that layer from their terminal using the same admin credentials you've been using here. Once Bob has a desktop and the pipeline is wired up, you're done with local applies.
+Go to `03-workspaces/`. The SA applies that layer from their terminal using the same admin credentials. Once Bob has a desktop and the pipeline authenticates cleanly, you're done with local applies.
 
 ---
 
@@ -350,8 +369,10 @@ Something went sideways? Paste the terminal output below, then drop this whole f
 
 | Error | What it means | Fix |
 |-------|---------------|-----|
-| AD creation times out | Totally normal | It's still provisioning in the background. Run `terraform apply` again — it'll pick up where it left off. |
-| `Error: AccessDeniedException` on Secrets Manager | Missing IAM permissions | Add `secretsmanager:*` to your local IAM profile |
-| OIDC `Error: Could not assume role` in CI | namespace/repo name mismatch | Re-apply with the exact GitLab namespace and repo name. Case-sensitive. |
-| `Error: InvalidSubnet` on AD | Wrong subnet IDs | Make sure `01-network` applied cleanly first |
-| `ValidationException: Value at 'password' failed to satisfy constraint` | AD password doesn't meet complexity requirements | Unset `TF_VAR_ad_admin_password`, run `read -s TF_VAR_ad_admin_password && export TF_VAR_ad_admin_password` again with a password that has uppercase, lowercase, a number, and a special character |
+| `InvalidClientTokenId` from STS on init or plan | Wrong AWS profile or stale credentials in environment | Run `env \| grep AWS` — if `AWS_ACCESS_KEY_ID` is set, `unset` it. Make sure `AWS_PROFILE` points to the right profile and `aws sts get-caller-identity` works before running Terraform. |
+| AD creation times out | Totally normal — AWS is spinning up two domain controllers | It's still provisioning in the background. Run `terraform apply` again — it'll pick up where it left off. |
+| `ValidationException: Value at 'password' failed to satisfy constraint` | AD admin password doesn't meet complexity requirements | Unset `TF_VAR_ad_admin_password`, re-run `read -s TF_VAR_ad_admin_password && export TF_VAR_ad_admin_password` with a password that has uppercase, lowercase, a number, and a special character. |
+| `Error: Value for undeclared variable` on plan | Running the plan from the wrong directory | Make sure you're in `terraform/02-identity/`, not `01-network/`. |
+| `Error: AccessDeniedException` on Secrets Manager | Missing IAM permissions on your local profile | Add `secretsmanager:*` to your local IAM user's permissions. |
+| OIDC `Error: Could not assume role` in CI | `gitlab_namespace` or `gitlab_repo` var doesn't match exactly | Re-apply with the exact GitLab group name and repo name. Case-sensitive. |
+| `Error: InvalidSubnet` on AD | `01-network` didn't apply cleanly | Run `terraform output` in `01-network/` to confirm the hub VPC subnets exist. |
