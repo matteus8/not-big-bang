@@ -160,7 +160,7 @@ apply:network:
   script:
     - cd terraform/01-network
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
-    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -auto-approve
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="aws_region=${AWS_REGION}" -auto-approve
 
 apply:identity:
   extends: .tf_apply
@@ -179,6 +179,7 @@ apply:identity:
       -var="gitlab_namespace=${GITLAB_NAMESPACE}"
       -var="gitlab_repo=${CI_PROJECT_NAME}"
       -var="gitlab_tls_thumbprint=${GITLAB_TLS_THUMBPRINT}"
+      -var="aws_region=${AWS_REGION}"
       -auto-approve
 
 apply:workspaces:
@@ -187,7 +188,7 @@ apply:workspaces:
   script:
     - cd terraform/03-workspaces
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
-    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -auto-approve
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -var="aws_region=${AWS_REGION}" -auto-approve
 
 apply:kubernetes:
   extends: .tf_apply
@@ -195,7 +196,7 @@ apply:kubernetes:
   script:
     - cd terraform/04-kubernetes
     - terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="region=${AWS_REGION}"
-    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -auto-approve
+    - terraform apply -var="project=${PROJECT_NAME}" -var="environment=${ENVIRONMENT}" -var="tfstate_bucket=${TF_STATE_BUCKET}" -var="aws_region=${AWS_REGION}" -auto-approve
 
 # ─── K8S VALIDATE ─────────────────────────────────────────────
 # Runs on every MR. Validates manifests and helm dry-runs.
@@ -209,7 +210,7 @@ apply:kubernetes:
     $(aws sts assume-role-with-web-identity
     --role-arn "${AWS_ROLE_ARN}"
     --role-session-name "gitlab-ci-${CI_JOB_ID}"
-    --web-identity-token "${CI_JOB_JWT_V2}"
+    --web-identity-token "${AWS_OIDC_TOKEN}"
     --duration-seconds 3600
     --query "Credentials.[AccessKeyId,SecretAccessKey,SessionToken]"
     --output text))
