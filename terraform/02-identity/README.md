@@ -335,16 +335,20 @@ Replace `d-0abc12345` with your `managed_ad_id` output and set the correct regio
 
 **Create the OU:**
 
-In the Session Manager terminal, type `powershell` then run:
+In the Session Manager terminal, type `powershell` then run each line individually:
 
 ```powershell
 Import-Module ActiveDirectory
-$password = ConvertTo-SecureString "YOUR_AD_ADMIN_PASSWORD" -AsPlainText -Force # <------- CHANGE ME
-$cred = New-Object System.Management.Automation.PSCredential("Admin@corp.falconpark.gov", $password) # <------ CHANGE ME
-New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov" # <------- CHANGE ME
+$password = ConvertTo-SecureString "YOUR_AD_ADMIN_PASSWORD" -AsPlainText -Force
+$cred = New-Object System.Management.Automation.PSCredential("YOURSHORTNAME\Admin", $password)
+New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=YOURSHORTNAME,DC=corp,DC=yourcontract,DC=gov" -Credential $cred -Server "10.x.x.x"
 ```
 
-Replace the domain components and `FALCONPARK` with your `ad_short_name`. No output means it worked.
+Replace `YOURSHORTNAME`, the domain components, and the `-Server` IP with one of your `managed_ad_dns_ips` outputs. No output means it worked.
+
+> **Run each line separately** — pasting a multiline block into Session Manager splits lines mid-command and breaks `New-Object`.
+
+> **Password with special characters:** If your AD admin password contains `!`, your shell may have escaped it to `\!` when you ran `terraform apply`. Check Secrets Manager (`YOUR_PROJECT-ENV/managed-ad/admin-password`) to see exactly what was stored — use that value here, backslash and all.
 
 > If `Import-Module ActiveDirectory` prints a warning about "Unable to contact the server" — run it a second time. The module loads before the AD connection is fully ready on first import; the second import works cleanly.
 

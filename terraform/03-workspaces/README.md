@@ -253,3 +253,5 @@ Paste the error output below and drop this whole file into Claude or ChatGPT: *"
 | WorkSpace stuck in `PENDING` | Normal provisioning lag | Wait 30 minutes. If still stuck, check CloudTrail for the underlying error. |
 | `Error: InvalidResourceStateException` on directory | AD not fully provisioned | Go back to `02-identity`, confirm the AD state is `Active` in the console |
 | `Access is denied` when creating OU via PowerShell | Trying to create under `CN=Computers` — Managed AD blocks this | See the OU creation section in `02-identity` README — use `OU=<AD_SHORT_NAME>,DC=...` as the `-Path`. |
+| `ERR_PLATFORM_DENIED` in WorkSpaces client | Connecting from a denied platform (browser, macOS, Android, etc.) | Install the **native Windows WorkSpaces client** from `https://clients.amazonworkspaces.com/`. The web client and non-Windows devices are explicitly denied in this config. |
+| `ERROR_TYPE_GETAUTHINFO` / invalid registration code | Usually triggered alongside `ERR_PLATFORM_DENIED` — platform check fails before auth loads | Same fix: use the native Windows client. The registration code itself is valid. |
