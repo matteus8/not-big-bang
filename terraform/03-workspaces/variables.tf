@@ -23,8 +23,7 @@ variable "tfstate_bucket" {
 
 variable "workspace_bundle_id" {
   type        = string
-  description = "WorkSpaces bundle ID. Run `aws workspaces describe-workspace-bundles --owner AMAZON` to list available bundles in GovCloud. Performance bundle (Windows Server 2022 + Office) is a good default."
-  default     = "" # leave blank to use data source lookup below
+  description = "WorkSpaces bundle ID. Run `aws workspaces describe-workspace-bundles --owner AMAZON --region <your-region>` to find available bundles. For Windows 11 desktops, look for 'Standard with Windows (Server 2025 based) (English)'."
 }
 
 variable "workspace_users" {

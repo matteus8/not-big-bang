@@ -309,6 +309,60 @@ Password:         <set a strong initial password>
 
 ---
 
+## After Apply — Create the WorkSpaces OU
+
+WorkSpaces needs an Organizational Unit in AD to place computer objects. This is an AD configuration step, so it lives here — not in `03-workspaces`. Do it once, right after the directory comes up.
+
+**Launch the directory administration EC2:**
+
+```bash
+aws ssm start-automation-execution \
+  --document-name "AWS-CreateDSManagementInstance" \
+  --document-version "\$DEFAULT" \
+  --parameters '{
+    "DirectoryId":["d-0abc12345"],
+    "KeyPairName":["NoKeyPair"],
+    "IamInstanceProfileName":["AmazonSSMDirectoryServiceInstanceProfileRole"],
+    "SecurityGroupName":["AmazonSSMDirectoryServiceSecurityGroup"],
+    "AmiId":["{{ssm:/aws/service/ami-windows-latest/Windows_Server-2019-English-Full-Base}}"],
+    "InstanceType":["t3.medium"],
+    "MetadataOptions":["{\"HttpEndpoint\":\"enabled\",\"HttpTokens\":\"optional\"}"]
+  }' \
+  --region us-gov-west-1
+```
+
+Replace `d-0abc12345` with your `managed_ad_id` output and set the correct region. Wait **10 minutes** before connecting — SSM will let you in earlier but the RSAT tools and AD module won't be fully initialized yet. Connecting too early gives you `Import-Module : module not found` errors. Give it the full 10 minutes, then connect via **EC2 → your instance → Connect → Session Manager → Connect**.
+
+**Create the OU:**
+
+In the Session Manager terminal, type `powershell` then run:
+
+```powershell
+Import-Module ActiveDirectory
+$password = ConvertTo-SecureString "YOUR_AD_ADMIN_PASSWORD" -AsPlainText -Force # <------- CHANGE ME
+$cred = New-Object System.Management.Automation.PSCredential("Admin@corp.falconpark.gov", $password) # <------ CHANGE ME
+New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov" # <------- CHANGE ME
+```
+
+Replace the domain components and `FALCONPARK` with your `ad_short_name`. No output means it worked.
+
+> If `Import-Module ActiveDirectory` prints a warning about "Unable to contact the server" — run it a second time. The module loads before the AD connection is fully ready on first import; the second import works cleanly.
+
+> **Important:** The OU must go under `OU=<AD_SHORT_NAME>`, not `OU=Computers`. AWS Managed AD restricts the Admin account from writing to the built-in Computers container — you'll get `Access is denied` if you try.
+
+Verify:
+
+```powershell
+Import-Module ActiveDirectory
+Get-ADOrganizationalUnit -Filter * -SearchBase "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov" | Select-Object DistinguishedName
+```
+
+You should see `OU=WorkSpaces,OU=FALCONPARK,DC=corp,...` in the output.
+
+**Terminate the EC2 when done.** It costs money and you don't need it again until you need to edit GPOs. Go to **EC2 → Instances → Terminate**.
+
+---
+
 ## After Apply — Push This Repo to Your GitLab
 
 You cloned this repo from GitHub and have been running Terraform locally. That's fine for layers 01–03, but CI takes over at layer 04 — and CI runs off GitLab, not GitHub. You need to push this repo to your Vipers.io GitLab instance now, before you need it.
@@ -390,3 +444,4 @@ Something went sideways? Paste the terminal output below, then drop this whole f
 | `Error: InvalidSubnet` on AD | `01-network` didn't apply cleanly | Run `terraform output` in `01-network/` to confirm the hub VPC subnets exist. |
 | `git push` rejected: "fetch first" or "non-fast-forward" | GitLab auto-created a default README when you made the project, and your local history doesn't include it | Run `git pull gitlab main --allow-unrelated-histories --no-rebase`, resolve the conflict in README.md by keeping your local version, commit the merge, then push again. |
 | `ValidationError: Request ARN is invalid` in CI pipeline | `AWS_ROLE_ARN` variable is set to the wrong ARN — the OIDC provider ARN looks similar but is different | The value must be the IAM **role** ARN from `gitlab_ci_role_arn` output, e.g. `arn:aws-us-gov:iam::123456789:role/falcon-park-dev-gitlab-ci`. Not the OIDC provider ARN. |
+| `InvalidRequestException: You can't create this secret because a secret with this name is already scheduled for deletion` | You destroyed this layer before and Secrets Manager holds a 30-day recovery window | Force-delete the old secret: `aws secretsmanager delete-secret --secret-id "YOUR_PROJECT-dev/managed-ad/admin-password" --force-delete-without-recovery --region us-gov-west-1` then re-run apply. |

@@ -10,10 +10,12 @@ The SA drew the short straw on this one — which is fine, because once it's run
 
 **What this builds:**
 - WorkSpaces directory registered against your Managed AD
-- Security group that lets desktops reach AD (in the hub) and the internet via NAT, but nothing else
+- Security group that lets desktops reach AD and the internet via NAT, but nothing else
 - KMS-encrypted root and user volumes (NIST SC-28, checked)
 - One WorkSpace per username in your list — add more by updating the list and re-applying
 - Users are **not** local admins. This is not negotiable.
+
+> **Why are WorkSpaces in the hub VPC?** AWS requires the WorkSpaces registration subnets to be in the same VPC as the directory. Since Managed AD lives in the hub VPC, desktops do too. Traffic isolation between desktops and servers is enforced by the security group, not separate VPCs.
 
 ---
 
@@ -41,6 +43,19 @@ KMS key for volume encryption adds ~$1/month — negligible.
 
 > AutoStop is the right default for a small GovCon team. If Bob complains about the 30-second resume time, consider AlwaysOn for his WorkSpace specifically and leave everyone else on AutoStop.
 
+### Why not WorkSpaces Pools?
+
+The AWS console shows a **Pools** tab alongside Personal. Pools bill per concurrent session instead of per seat, which sounds cheaper — but for GovCon it usually isn't the right fit.
+
+**Pools save money when** you have shift workers or part-time contractors where fewer than ~60% of users are online at the same time. If you have 50 users but only 20 ever log in simultaneously, you pay for 20 slots.
+
+**Pools don't work well for GovCon because:**
+- Sessions are non-persistent — files are gone on logout. Users must store everything on a network share (FSx, SharePoint), which adds scope to your ATO.
+- Shared session infrastructure is harder to document in an SSP. AOs expect a 1:1 user-to-desktop mapping for end-user workstations.
+- STIG hardening is different for Pools and less mature than for Personal desktops.
+
+For a team of contractors doing standard office work with a live ATO — WorkSpaces Personal is the right product. The simplicity of one user, one desktop, one SSP entry is worth the price difference.
+
 ---
 
 ## Before You Start
@@ -56,15 +71,15 @@ aws ds describe-directories \
   --query 'DirectoryDescriptions[*].[DirectoryId,Name,Stage]' \
   --output table
 
-# Confirm your WorkSpaces spoke subnets exist
+# Confirm your hub private subnets exist (WorkSpaces deploys into hub VPC alongside AD)
 aws ec2 describe-subnets \
   --region us-gov-west-1 \                         # <---- change me to your region
-  --filters "Name=tag:Layer,Values=01-network" \
-  --query 'Subnets[*].[SubnetId,CidrBlock,Tags[?Key==`Name`].Value|[0]]' \
+  --filters "Name=tag:Layer,Values=01-network" "Name=tag:Name,Values=*hub-private*" \
+  --query 'Subnets[*].[SubnetId,CidrBlock,AvailabilityZoneId,Tags[?Key==`Name`].Value|[0]]' \
   --output table
 ```
 
-You should see your AD directory in `Active` state and subnets in the `10.1.x.x` range (the WorkSpaces spoke). If the directory isn't `Active` yet, wait and check again — it takes 20-45 minutes.
+You should see your AD directory in `Active` state and two hub private subnets in the `10.0.x.x` range in different Availability Zones. If the directory isn't `Active` yet, wait and check again — it takes 20-45 minutes.
 
 ### Find your WorkSpaces bundle ID
 
@@ -78,43 +93,24 @@ aws workspaces describe-workspace-bundles \
   --output table
 ```
 
-Find "Standard with Windows Server 2022" or similar. Copy the `BundleId` — it looks like `wsb-abc123def`. The Standard bundle is the right default for most GovCon teams — enough compute for office work without the graphics card tax.
+Look for **`Standard with Windows (Server 2025 based) (English)`** — this is the Windows 11 client experience on Server 2025 infrastructure, and what most AOs expect to see on end-user workstations today. Copy the `BundleId` — it looks like `wsb-abc123def`.
 
-### Create the OU in AD first
+> **Windows 11 vs Windows Server 2025:** The naming is confusing. Bundles that say `(Server 2025 based)` deliver a **Windows 11 desktop** to users. Bundles that say `Windows Server 2025` deliver a full **server OS** — no Windows 11 Start menu, not what most AOs mean when they ask for Windows 11. For end-user WorkSpaces, you want the `(Server 2025 based)` variant.
 
-WorkSpaces needs an OU to place computer objects. This cannot be done from the Directory Service console UI — you need to use the directory administration EC2.
+The Standard bundle is the right default for most GovCon teams — enough compute for office work without the graphics card tax. If users need more headroom, Performance is the next tier up.
 
-**Launch the admin EC2:**
-1. Go to **AWS Directory Service → Directories → your directory**
-2. Click **Actions → Launch directory administration EC2 instance**
-3. AWS creates a Windows EC2 with RSAT tools pre-installed. Once it's running, connect to it via **EC2 → Instances → your instance → Connect → Session Manager**.
+### Confirm the WorkSpaces OU exists
 
-**Create the OU via PowerShell:**
+The WorkSpaces OU was created in `02-identity` as part of AD setup. Before running the plan, confirm it's there:
 
-First, retrieve your AD admin password from **AWS Secrets Manager → your secret → Retrieve secret value**.
-
-Then in the Session Manager terminal, type `powershell` and run:
-
-```powershell
-$password = ConvertTo-SecureString "YOUR_AD_ADMIN_PASSWORD" -AsPlainText -Force
-$cred = New-Object System.Management.Automation.PSCredential("Admin@corp.falconpark.gov", $password)
-New-ADOrganizationalUnit -Name "WorkSpaces" -Path "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov"
+```bash
+aws ds describe-directories \
+  --region us-gov-west-1 \                         # <---- change me to your region
+  --query 'DirectoryDescriptions[*].[DirectoryId,Name,Stage]' \
+  --output table
 ```
 
-Replace `FALCONPARK` with your `ad_short_name`, and adjust the domain components to match your `ad_domain_name`. No output means success.
-
-> **Important:** The OU goes under `OU=<AD_SHORT_NAME>`, not `OU=Computers`. AWS Managed AD restricts the `Admin` user from creating objects directly under `CN=Computers`. You get an "Access is denied" error if you try.
-
-Verify it was created:
-```powershell
-Get-ADOrganizationalUnit -Filter * -SearchBase "OU=FALCONPARK,DC=corp,DC=falconpark,DC=gov" -Credential $cred -Server "corp.falconpark.gov" | Select-Object DistinguishedName
-```
-
-You should see `OU=WorkSpaces,OU=FALCONPARK,DC=corp,...` in the output.
-
-If you skip this step entirely, the WorkSpaces directory registration will fail with a vague error about the OU not existing.
-
-> **Clean up the admin EC2 when you're done.** The directory administration EC2 costs money while it's running and you don't need it after the OU is created. Go to **EC2 → Instances**, find the instance, and **Terminate** it. If you leave it running and later try to destroy `01-network`, Terraform will hang with `DependencyViolation` because the EC2 is sitting inside the hub VPC.
+The directory should show `Active`. If it does, the OU exists and you're ready to apply. If you skipped the OU creation step in `02-identity`, go back and do it now — `terraform apply` will fail with `InvalidParameterValuesException: The OU does not exist` if you don't.
 
 ---
 
@@ -139,7 +135,7 @@ terraform plan \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
   -var="ad_domain_name=corp.falconpark.gov" \      # <---- change me — must match 02-identity exactly
   -var="ad_short_name=FALCONPARK" \                # <---- change me — must match 02-identity exactly
-  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me to the bundle ID from the lookup above
+  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me — use "Standard with Windows (Server 2025 based) (English)" bundle ID
   -var='workspace_users=["bjohnson"]'              # <---- start with Bob, add more later
 ```
 
@@ -156,7 +152,7 @@ terraform apply \
   -var="tfstate_bucket=falcon-park-tfstate" \      # <---- change me
   -var="ad_domain_name=corp.falconpark.gov" \      # <---- change me
   -var="ad_short_name=FALCONPARK" \                # <---- change me
-  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me
+  -var='workspace_bundle_id=wsb-abc123def' \       # <---- change me — use "Standard with Windows (Server 2025 based) (English)" bundle ID
   -var='workspace_users=["bjohnson"]'              # <---- Bob first, add more names when ready
 ```
 
@@ -256,4 +252,4 @@ Paste the error output below and drop this whole file into Claude or ChatGPT: *"
 | `Error: User not found` | Username not in AD | Create the user in AD first (in 02-identity), then apply |
 | WorkSpace stuck in `PENDING` | Normal provisioning lag | Wait 30 minutes. If still stuck, check CloudTrail for the underlying error. |
 | `Error: InvalidResourceStateException` on directory | AD not fully provisioned | Go back to `02-identity`, confirm the AD state is `Active` in the console |
-| `Access is denied` when creating OU via PowerShell | Trying to create under `CN=Computers` — Managed AD blocks this | Use `OU=<AD_SHORT_NAME>,DC=...` as the `-Path`. AWS Managed AD only grants Admin rights within the delegated OU, not the built-in Computers container. |
+| `Access is denied` when creating OU via PowerShell | Trying to create under `CN=Computers` — Managed AD blocks this | See the OU creation section in `02-identity` README — use `OU=<AD_SHORT_NAME>,DC=...` as the `-Path`. |

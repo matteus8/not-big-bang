@@ -39,14 +39,16 @@ data "terraform_remote_state" "identity" {
 # Tell WorkSpaces which AD directory to authenticate against
 # and which VPC subnets to stream desktops from.
 #
-# Important: the subnets must be in the WorkSpaces *spoke* VPC,
-# not the hub. The spoke is peered to the hub, so AD auth still
-# works — desktops just don't share a network with your servers.
+# AWS requires the registration subnets to be in the SAME VPC
+# as the directory. Our Managed AD lives in the hub VPC, so
+# WorkSpaces desktops go in hub private subnets too.
+# Traffic isolation between desktops and servers is enforced
+# by the security group below, not by separate VPCs.
 # ═══════════════════════════════════════════════════════════════
 
 resource "aws_workspaces_directory" "main" {
   directory_id = data.terraform_remote_state.identity.outputs.managed_ad_id
-  subnet_ids   = data.terraform_remote_state.network.outputs.spoke_workspaces_private_subnet_ids
+  subnet_ids   = data.terraform_remote_state.network.outputs.hub_private_subnet_ids
 
   self_service_permissions {
     change_compute_type  = false # users can't resize their own desktop
@@ -122,18 +124,18 @@ resource "aws_iam_role_policy_attachment" "workspaces_self_service" {
 
 # ═══════════════════════════════════════════════════════════════
 # SECURITY GROUP — controls what WorkSpaces desktops can reach
-# Desktops should talk to AD (hub) and the internet via hub NAT.
-# They should NOT talk directly to EKS workloads.
+# Desktops are in the hub VPC alongside AD. Allow AD/DNS traffic
+# within the hub, internet via hub NAT. Block EKS spoke traffic.
 # ═══════════════════════════════════════════════════════════════
 
 resource "aws_security_group" "workspaces" {
   name        = "${local.name_prefix}-workspaces-sg"
-  description = "WorkSpaces desktops — egress to hub AD and internet via hub NAT"
-  vpc_id      = data.terraform_remote_state.network.outputs.spoke_workspaces_vpc_id
+  description = "WorkSpaces desktops - egress to hub AD and internet via hub NAT"
+  vpc_id      = data.terraform_remote_state.network.outputs.hub_vpc_id
 
-  # AD ports — Kerberos, LDAP, DNS, SMB (hub only)
+  # AD ports — Kerberos, LDAP, DNS, SMB (within hub VPC)
   egress {
-    description = "AD/DNS to hub"
+    description = "AD/DNS within hub VPC"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -169,11 +171,9 @@ resource "aws_security_group" "workspaces" {
 # ═══════════════════════════════════════════════════════════════
 
 data "aws_workspaces_bundle" "standard" {
-  # Windows Server 2022 Performance bundle — adjust if you need different specs
-  # Run: aws workspaces describe-workspace-bundles --owner AMAZON --region us-gov-west-1
-  bundle_id = var.workspace_bundle_id != "" ? var.workspace_bundle_id : null
-  owner     = var.workspace_bundle_id == "" ? "AMAZON" : null
-  name      = var.workspace_bundle_id == "" ? "Standard with Windows Server 2022 and Microsoft Office 2019" : null
+  # Run the lookup command in the README to find the right bundle ID for your region.
+  # For Windows 11 desktops: look for "Standard with Windows (Server 2025 based) (English)"
+  bundle_id = var.workspace_bundle_id
 }
 
 resource "aws_workspaces_workspace" "users" {
